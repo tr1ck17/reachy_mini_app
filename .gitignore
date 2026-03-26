@@ -17,3 +17,6 @@ test_*.py
 
 # unused files
 chat.py
+
+memory.json
+sessions/
