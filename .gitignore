@@ -24,3 +24,5 @@ sessions/
 stage_state.json
 
 sessions/
+
+session_id.json

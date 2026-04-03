@@ -13,6 +13,11 @@ Architecture:
 Recording:
 - Press Enter once to START speaking
 - Press Enter again to STOP speaking and trigger response
+
+Transcripts:
+- Each CPS problem has one transcript file that grows across sessions
+- Continuing a session appends to the same file with a session break marker
+- Starting fresh creates a new transcript file with a new session ID
 """
 
 import asyncio
@@ -20,7 +25,6 @@ import logging
 import os
 import random
 import threading
-import time
 import uuid
 
 import anthropic
@@ -40,11 +44,12 @@ from cps_manager import (
 from memory_manager import (
     append_to_session, build_history_context,
     close_session, load_memory, start_session,
-    save_stage, load_stage_state, export_session
+    save_stage, load_stage_state, export_session,
+    load_session_id, save_session_id, new_session_id,
+    clear_session_id, MEMORY_FILE, STAGE_FILE, SESSION_FILE
 )
 
 # ── Logging Setup ─────────────────────────────────────────────────────────────
-# Suppress noisy third-party loggers so the terminal stays readable
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,11 +61,9 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Suppress noisy reachy_mini and httpx logs from terminal (still go to file)
+# Suppress noisy third-party loggers from terminal (still written to log file)
 for noisy in ["reachy_mini", "httpx", "faster_whisper", "root"]:
     logging.getLogger(noisy).setLevel(logging.ERROR)
-    for handler in logging.getLogger(noisy).handlers:
-        handler.setLevel(logging.ERROR)
 
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -69,7 +72,7 @@ OLLAMA_MODEL     = "llama3.2:3b"
 CLAUDE_MODEL     = "claude-haiku-4-5-20251001"
 SAMPLE_RATE      = 16000
 VOICE            = "en-US-AriaNeural"
-MIN_AUDIO_VOLUME = 0.0005  # Lowered slightly for normal mic distance
+MIN_AUDIO_VOLUME = 0.0005
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 USE_CLAUDE        = bool(ANTHROPIC_API_KEY)
@@ -120,7 +123,7 @@ def speak(text: str):
     """
     Convert text to speech and play it.
     Uses a unique filename per call to avoid file lock conflicts.
-    Falls back to printing the text if audio playback fails.
+    Falls back to printing if audio fails.
     """
     filepath = f"tts_{uuid.uuid4().hex[:8]}.wav"
     try:
@@ -132,7 +135,6 @@ def speak(text: str):
         logger.error(f"TTS/audio playback error: {e}")
         print(f"[Reachy would say]: {text}")
     finally:
-        # Clean up temp file
         try:
             if os.path.exists(filepath):
                 os.remove(filepath)
@@ -227,9 +229,8 @@ def llm_call(system_prompt: str, messages: list) -> str:
 def record_audio() -> str:
     """
     Record audio from the microphone using a background thread.
-    - This function is called after the first Enter press in the main loop.
-    - Press Enter again to stop recording and trigger transcription.
-    Uses a unique filename to avoid file lock conflicts.
+    Press Enter to stop recording and trigger transcription.
+    Uses unique filenames to avoid file lock conflicts.
     """
     print("🎤 Recording... press Enter again when you're done speaking.")
 
@@ -305,7 +306,6 @@ def chat(mini, current_session: dict, past_context: list,
     append_to_session(current_session, "user", user_message)
     messages = past_context + current_session["history"]
 
-    # Acknowledge while LLM generates
     express_mood(mini, "thinking")
     speak(random.choice(THINKING_PHRASES))
 
@@ -329,14 +329,15 @@ def chat(mini, current_session: dict, past_context: list,
 
 def prompt_session_mode() -> bool:
     """
-    Ask the user at startup whether to continue the previous session
-    or start fresh. Returns True if starting fresh.
+    Ask the user whether to continue the previous session or start fresh.
+    Returns True if starting fresh.
     """
-    from memory_manager import MEMORY_FILE, STAGE_FILE
-    has_memory = os.path.exists(MEMORY_FILE) or os.path.exists(STAGE_FILE)
+    has_previous = any(
+        os.path.exists(f) for f in [MEMORY_FILE, STAGE_FILE, SESSION_FILE]
+    )
 
-    if not has_memory:
-        return True  # Nothing to continue, always start fresh
+    if not has_previous:
+        return True
 
     print("\nA previous session was found.")
     print("  [1] Continue previous session")
@@ -369,14 +370,25 @@ def main():
     start_fresh = prompt_session_mode()
 
     if start_fresh:
-        # Clear saved state
-        for f in ["memory.json", "stage_state.json"]:
+        # Clear all saved state for a clean run
+        for f in [MEMORY_FILE, STAGE_FILE, SESSION_FILE]:
             if os.path.exists(f):
                 try:
                     os.remove(f)
                     logger.info(f"Cleared: {f}")
                 except IOError as e:
                     logger.error(f"Could not clear {f}: {e}")
+        # Generate a new session ID for this fresh problem
+        session_id = new_session_id()
+        save_session_id(session_id)
+        logger.info(f"New session ID: {session_id}")
+    else:
+        # Load existing session ID or create one if missing
+        session_id = load_session_id()
+        if not session_id:
+            session_id = new_session_id()
+            save_session_id(session_id)
+            logger.info(f"No session ID found — created new: {session_id}")
 
     # Load memory and stage
     sessions        = load_memory()
@@ -427,7 +439,6 @@ def main():
                         speak("We've made it through the whole process — amazing work!")
                     continue
 
-                # Normal conversation turn
                 chat(mini, current_session, past_context, user_input, current_stage)
 
     except ConnectionError as e:
@@ -438,7 +449,7 @@ def main():
         print(f"\nUnexpected error: {e}")
     finally:
         close_session(sessions, current_session)
-        export_session(current_session)
+        export_session(current_session, session_id)
         save_stage(current_stage)
         logger.info("Session saved. Shutting down.")
         print("\nSession saved. Goodbye!")
@@ -446,3 +457,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+```
