@@ -20,3 +20,7 @@ chat.py
 
 memory.json
 sessions/
+
+stage_state.json
+
+sessions/

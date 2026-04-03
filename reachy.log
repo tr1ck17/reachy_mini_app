@@ -1,0 +1,237 @@
+2026-04-02 18:56:19,102 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/Systran/faster-whisper-tiny/revision/main "HTTP/1.1 200 OK"
+2026-04-02 18:56:19,657 [INFO] __main__: Whisper model loaded successfully.
+2026-04-02 18:56:19,658 [INFO] __main__: Reachy Mini CPS Facilitator starting up.
+2026-04-02 18:56:19,658 [WARNING] __main__: ANTHROPIC_API_KEY not set — using Ollama. Expect slower responses.
+2026-04-02 18:56:19,658 [INFO] memory_manager: No memory file found — starting fresh.
+2026-04-02 18:56:21,767 [INFO] reachy_mini.reachy_mini: Connection mode selected: localhost_only
+2026-04-02 18:56:22,391 [WARNING] reachy_mini.reachy_mini: Invalid media backend on Lite: default, using default backend.
+2026-04-02 18:56:22,391 [INFO] reachy_mini.media.media_manager: Using GStreamer media backend.
+2026-04-02 18:56:22,391 [INFO] reachy_mini.media.media_manager: Using GStreamer camera backend.
+2026-04-02 18:56:22,601 [INFO] reachy_mini.media.media_manager: Using GStreamer audio backend.
+2026-04-02 18:56:22,637 [ERROR] root: No Reachy Mini Audio USB device found!
+2026-04-02 18:56:22,975 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Source card found.
+2026-04-02 18:56:23,212 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio source.
+2026-04-02 18:56:23,498 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Sink card found.
+2026-04-02 18:56:23,742 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio sink.
+2026-04-02 18:56:23,743 [INFO] __main__: Connected to Reachy Mini.
+2026-04-02 18:56:28,171 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1000000000)
+2026-04-02 18:56:38,523 [INFO] faster_whisper: Processing audio with duration 00:05.824
+2026-04-02 18:56:39,073 [INFO] faster_whisper: Detected language 'en' with probability 0.95
+2026-04-02 18:56:39,694 [INFO] __main__: Transcribed: I'd like to begin the CPS process.
+2026-04-02 18:57:29,953 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 18:57:29,953 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 18:57:29,953 [INFO] __main__: Stage=Clarify Mood=happy Advance=True
+2026-04-02 18:57:47,404 [INFO] memory_manager: Stage saved: ideate
+2026-04-02 18:57:47,404 [INFO] __main__: Advancing to stage: ideate
+2026-04-02 18:58:02,197 [INFO] faster_whisper: Processing audio with duration 00:09.152
+2026-04-02 18:58:02,642 [INFO] faster_whisper: Detected language 'en' with probability 0.98
+2026-04-02 18:58:03,252 [INFO] __main__: Transcribed: Hold on, you're moving way too fast.  We didn't even start the first stage yet.
+2026-04-02 18:58:54,300 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 18:58:54,301 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 18:58:54,301 [INFO] __main__: Stage=Ideate Mood=thinking Advance=False
+2026-04-02 18:59:27,073 [INFO] faster_whisper: Processing audio with duration 00:10.688
+2026-04-02 18:59:27,467 [INFO] faster_whisper: Detected language 'en' with probability 0.99
+2026-04-02 18:59:28,037 [INFO] __main__: Transcribed: No, you're not listening. We need to go back to stage one, clarify. We haven't even defined a goal again, right?
+2026-04-02 18:59:45,478 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 18:59:45,478 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 18:59:45,478 [INFO] __main__: Stage=Ideate Mood=neutral Advance=False
+2026-04-02 19:00:14,378 [INFO] memory_manager: Saved 1 session(s) to memory.
+2026-04-02 19:00:14,381 [INFO] memory_manager: Session exported to sessions\Thursday_April_02_2026_at_0656_PM.md
+2026-04-02 19:00:14,382 [INFO] memory_manager: Stage saved: ideate
+2026-04-02 19:00:14,382 [INFO] __main__: Session saved. Shutting down.
+2026-04-02 19:03:23,301 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/Systran/faster-whisper-tiny/revision/main "HTTP/1.1 200 OK"
+2026-04-02 19:03:23,712 [INFO] __main__: Whisper model loaded successfully.
+2026-04-02 19:03:23,713 [INFO] __main__: Reachy Mini CPS Facilitator starting up.
+2026-04-02 19:03:23,714 [WARNING] __main__: ANTHROPIC_API_KEY not set — using Ollama. Expect slower responses.
+2026-04-02 19:03:23,714 [INFO] memory_manager: No memory file found — starting fresh.
+2026-04-02 19:03:25,765 [INFO] reachy_mini.reachy_mini: Connection mode selected: localhost_only
+2026-04-02 19:03:26,733 [WARNING] reachy_mini.reachy_mini: Invalid media backend on Lite: default, using default backend.
+2026-04-02 19:03:26,733 [INFO] reachy_mini.media.media_manager: Using GStreamer media backend.
+2026-04-02 19:03:26,734 [INFO] reachy_mini.media.media_manager: Using GStreamer camera backend.
+2026-04-02 19:03:26,862 [INFO] reachy_mini.media.media_manager: Using GStreamer audio backend.
+2026-04-02 19:03:26,901 [ERROR] root: No Reachy Mini Audio USB device found!
+2026-04-02 19:03:27,168 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Source card found.
+2026-04-02 19:03:27,357 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio source.
+2026-04-02 19:03:27,603 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Sink card found.
+2026-04-02 19:03:27,811 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio sink.
+2026-04-02 19:03:27,812 [INFO] __main__: Connected to Reachy Mini.
+2026-04-02 19:03:32,173 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1000000000)
+2026-04-02 19:03:45,751 [INFO] faster_whisper: Processing audio with duration 00:07.040
+2026-04-02 19:03:46,258 [INFO] faster_whisper: Detected language 'en' with probability 0.99
+2026-04-02 19:03:46,859 [INFO] __main__: Transcribed: Hey, I'd like to begin the creative problem-solving process.
+2026-04-02 19:04:25,450 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:04:25,450 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:04:25,451 [INFO] __main__: Stage=Clarify Mood=happy Advance=True
+2026-04-02 19:04:35,131 [INFO] memory_manager: Stage saved: ideate
+2026-04-02 19:04:35,131 [INFO] __main__: Advancing to stage: ideate
+2026-04-02 19:04:50,186 [INFO] faster_whisper: Processing audio with duration 00:08.384
+2026-04-02 19:04:50,620 [INFO] faster_whisper: Detected language 'en' with probability 0.99
+2026-04-02 19:04:51,209 [INFO] __main__: Transcribed: Wait, you can't just move into the ideate stage, we haven't even started the clarify stage.
+2026-04-02 19:05:38,958 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:05:38,958 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:05:38,959 [INFO] __main__: Stage=Ideate Mood=neutral Advance=False
+2026-04-02 19:05:54,784 [INFO] memory_manager: Saved 1 session(s) to memory.
+2026-04-02 19:05:54,785 [INFO] memory_manager: Session exported to sessions\Thursday_April_02_2026_at_0703_PM.md
+2026-04-02 19:05:54,785 [INFO] memory_manager: Stage saved: ideate
+2026-04-02 19:05:54,785 [INFO] __main__: Session saved. Shutting down.
+2026-04-02 19:11:16,135 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/Systran/faster-whisper-tiny/revision/main "HTTP/1.1 200 OK"
+2026-04-02 19:11:16,444 [INFO] __main__: Whisper model loaded successfully.
+2026-04-02 19:11:16,444 [INFO] __main__: Reachy Mini CPS Facilitator starting up.
+2026-04-02 19:11:16,444 [WARNING] __main__: ANTHROPIC_API_KEY not set — using Ollama. Expect slower responses.
+2026-04-02 19:11:16,457 [INFO] memory_manager: Loaded 1 past session(s) from memory.
+2026-04-02 19:11:16,468 [INFO] memory_manager: Restored stage: ideate
+2026-04-02 19:11:18,546 [INFO] reachy_mini.reachy_mini: Connection mode selected: localhost_only
+2026-04-02 19:11:19,094 [WARNING] reachy_mini.reachy_mini: Invalid media backend on Lite: default, using default backend.
+2026-04-02 19:11:19,094 [INFO] reachy_mini.media.media_manager: Using GStreamer media backend.
+2026-04-02 19:11:19,094 [INFO] reachy_mini.media.media_manager: Using GStreamer camera backend.
+2026-04-02 19:11:19,213 [INFO] reachy_mini.media.media_manager: Using GStreamer audio backend.
+2026-04-02 19:11:19,250 [ERROR] root: No Reachy Mini Audio USB device found!
+2026-04-02 19:11:19,526 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Source card found.
+2026-04-02 19:11:19,725 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio source.
+2026-04-02 19:11:19,959 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Sink card found.
+2026-04-02 19:11:20,156 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio sink.
+2026-04-02 19:11:20,157 [INFO] __main__: Connected to Reachy Mini.
+2026-04-02 19:11:24,176 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1000000000)
+2026-04-02 19:11:32,602 [INFO] faster_whisper: Processing audio with duration 00:04.352
+2026-04-02 19:11:33,015 [INFO] faster_whisper: Detected language 'en' with probability 0.94
+2026-04-02 19:11:33,501 [INFO] __main__: Transcribed: I'm ready to begin the CPS process.
+2026-04-02 19:12:25,240 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:12:25,241 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:12:25,241 [INFO] __main__: Stage=Ideate Mood=happy Advance=False
+2026-04-02 19:12:38,298 [INFO] memory_manager: Stage saved: develop
+2026-04-02 19:12:38,298 [INFO] __main__: Advancing to stage: develop
+2026-04-02 19:12:59,477 [INFO] faster_whisper: Processing audio with duration 00:15.552
+2026-04-02 19:12:59,883 [INFO] faster_whisper: Detected language 'en' with probability 1.00
+2026-04-02 19:13:00,991 [INFO] __main__: Transcribed: Why did you move into the develop?  You didn't even let me answer the clarifies stage and then you actually started with  the ideate.  What?
+2026-04-02 19:13:51,844 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:13:51,845 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:13:51,845 [INFO] __main__: Stage=Develop Mood=neutral Advance=False
+2026-04-02 19:15:00,693 [INFO] memory_manager: Saved 2 session(s) to memory.
+2026-04-02 19:15:00,695 [INFO] memory_manager: Session exported to sessions\Thursday_April_02_2026_at_0711_PM.md
+2026-04-02 19:15:00,695 [INFO] memory_manager: Stage saved: develop
+2026-04-02 19:15:00,695 [INFO] __main__: Session saved. Shutting down.
+2026-04-02 19:17:39,600 [INFO] httpx: HTTP Request: GET https://huggingface.co/api/models/Systran/faster-whisper-tiny/revision/main "HTTP/1.1 200 OK"
+2026-04-02 19:17:39,873 [INFO] __main__: Whisper model loaded successfully.
+2026-04-02 19:17:39,874 [INFO] __main__: Reachy Mini CPS Facilitator starting up.
+2026-04-02 19:17:39,874 [WARNING] __main__: ANTHROPIC_API_KEY not set — using Ollama. Expect slower responses.
+2026-04-02 19:17:39,874 [INFO] memory_manager: No memory file found — starting fresh.
+2026-04-02 19:17:41,920 [INFO] reachy_mini.reachy_mini: Connection mode selected: localhost_only
+2026-04-02 19:17:42,405 [WARNING] reachy_mini.reachy_mini: Invalid media backend on Lite: default, using default backend.
+2026-04-02 19:17:42,406 [INFO] reachy_mini.media.media_manager: Using GStreamer media backend.
+2026-04-02 19:17:42,406 [INFO] reachy_mini.media.media_manager: Using GStreamer camera backend.
+2026-04-02 19:17:42,563 [INFO] reachy_mini.media.media_manager: Using GStreamer audio backend.
+2026-04-02 19:17:42,607 [ERROR] root: No Reachy Mini Audio USB device found!
+2026-04-02 19:17:42,861 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Source card found.
+2026-04-02 19:17:43,058 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio source.
+2026-04-02 19:17:43,306 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Sink card found.
+2026-04-02 19:17:43,518 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio sink.
+2026-04-02 19:17:43,518 [INFO] __main__: Connected to Reachy Mini.
+2026-04-02 19:17:48,169 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1000000000)
+2026-04-02 19:17:57,918 [INFO] faster_whisper: Processing audio with duration 00:06.080
+2026-04-02 19:17:58,308 [INFO] faster_whisper: Detected language 'en' with probability 0.88
+2026-04-02 19:17:58,744 [INFO] __main__: Transcribed: I'm ready to begin the CPS process.
+2026-04-02 19:18:32,358 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:18:32,359 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:18:32,359 [INFO] __main__: Stage=Clarify Mood=happy Advance=False
+2026-04-02 19:19:20,782 [INFO] faster_whisper: Processing audio with duration 00:34.880
+2026-04-02 19:19:21,190 [INFO] faster_whisper: Detected language 'en' with probability 0.99
+2026-04-02 19:19:22,291 [INFO] __main__: Transcribed: It would be great if I could create a very high accuracy and high risk to rural, rural, rural.  Sorry, it would be great if I could create a high accuracy and a high risk to reward ratio.  AI bought to help me make consistent profitable trades in the 4X market.
+2026-04-02 19:19:36,440 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:19:36,441 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:19:36,442 [INFO] __main__: Stage=Clarify Mood=neutral Advance=False
+2026-04-02 19:20:40,803 [INFO] faster_whisper: Processing audio with duration 00:25.600
+2026-04-02 19:20:41,175 [INFO] faster_whisper: Detected language 'en' with probability 1.00
+2026-04-02 19:20:41,937 [INFO] __main__: Transcribed: So the reason that I'm looking for a solution like this is because I can consult something  that's technically smarter than I am, and if it lines up with a manual strategy that I have,  then I'll have more confidence in making my trades and won't change my rules as I'm in a trade.
+2026-04-02 19:20:59,637 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:20:59,638 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:20:59,638 [INFO] __main__: Stage=Clarify Mood=neutral Advance=False
+2026-04-02 19:21:49,977 [INFO] faster_whisper: Processing audio with duration 00:21.632
+2026-04-02 19:21:50,307 [INFO] faster_whisper: Detected language 'en' with probability 1.00
+2026-04-02 19:21:50,989 [INFO] __main__: Transcribed: Not necessarily I just will sometimes get emotional and beyond that I want to start branching out  the kinds of Forex pairs that I'm trading. Like for example I only trade USDJP Y right now  but I want to strategy for other Forex pairs as well.
+2026-04-02 19:22:08,589 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:22:08,589 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:22:08,590 [INFO] __main__: Stage=Clarify Mood=neutral Advance=False
+2026-04-02 19:23:00,855 [INFO] faster_whisper: Processing audio with duration 00:19.968
+2026-04-02 19:23:01,169 [INFO] faster_whisper: Detected language 'en' with probability 1.00
+2026-04-02 19:23:01,726 [INFO] __main__: Transcribed: I'm also interested in new pair combinations and their viability.  Like for example, I know that the strategy I use for USDJPY does not work on the Euro USD regardless of what anyone says.
+2026-04-02 19:23:22,332 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:23:22,332 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:23:22,332 [INFO] __main__: Stage=Clarify Mood=neutral Advance=False
+2026-04-02 19:24:16,723 [INFO] faster_whisper: Processing audio with duration 00:24.128
+2026-04-02 19:24:17,053 [INFO] faster_whisper: Detected language 'en' with probability 1.00
+2026-04-02 19:24:18,174 [INFO] __main__: Transcribed: Well, for example, the U.S.D.J.P.Y. strategy I use is very range-based, and it's also during  a specific time of day.  Trading the Euro U.S.D. at that same time of day just results in less liquidity and not enough  room for any noticeable profit.
+2026-04-02 19:24:40,152 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:24:40,153 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:24:40,153 [INFO] __main__: Stage=Clarify Mood=neutral Advance=False
+2026-04-02 19:25:24,398 [INFO] faster_whisper: Processing audio with duration 00:05.312
+2026-04-02 19:25:24,715 [INFO] faster_whisper: Detected language 'en' with probability 0.99
+2026-04-02 19:25:25,153 [INFO] __main__: Transcribed: Yeah, that's pretty, that's pretty much how I feel, yeah.
+2026-04-02 19:25:36,100 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:25:36,100 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:25:36,101 [INFO] __main__: Stage=Clarify Mood=happy Advance=False
+2026-04-02 19:25:47,320 [INFO] faster_whisper: Processing audio with duration 00:02.816
+2026-04-02 19:25:47,632 [INFO] faster_whisper: Detected language 'en' with probability 0.47
+2026-04-02 19:25:48,019 [INFO] __main__: Transcribed: Yeah, we can do that.
+2026-04-02 19:25:53,660 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:25:53,661 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:25:53,662 [INFO] __main__: Stage=Clarify Mood=thinking Advance=False
+2026-04-02 19:25:54,180 [ERROR] __main__: TTS/audio playback error: Error opening 'response.wav': Format not recognised.
+2026-04-02 19:26:03,360 [INFO] faster_whisper: Processing audio with duration 00:01.152
+2026-04-02 19:26:03,660 [INFO] faster_whisper: Detected language 'en' with probability 0.35
+2026-04-02 19:26:04,036 [INFO] __main__: Transcribed: 
+2026-04-02 19:26:14,636 [INFO] faster_whisper: Processing audio with duration 00:07.872
+2026-04-02 19:26:14,963 [INFO] faster_whisper: Detected language 'en' with probability 0.99
+2026-04-02 19:26:15,425 [INFO] __main__: Transcribed: Does that mean we're moving on to the, uh, to the ideate stage or what?
+2026-04-02 19:26:33,772 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:26:33,773 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:26:33,774 [INFO] __main__: Stage=Clarify Mood=neutral Advance=False
+2026-04-02 19:27:12,364 [INFO] faster_whisper: Processing audio with duration 00:12.032
+2026-04-02 19:27:12,718 [INFO] faster_whisper: Detected language 'en' with probability 0.98
+2026-04-02 19:27:13,243 [INFO] __main__: Transcribed: I'm ready to start exploring some ideas for how I can leverage AI to improve my trading strategy on any worthwhile for Xperia.
+2026-04-02 19:27:27,474 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:27:27,474 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:27:27,474 [INFO] __main__: Stage=Clarify Mood=neutral Advance=False
+2026-04-02 19:28:02,092 [INFO] faster_whisper: Processing audio with duration 00:06.272
+2026-04-02 19:28:02,452 [INFO] faster_whisper: Detected language 'en' with probability 1.00
+2026-04-02 19:28:02,899 [INFO] __main__: Transcribed: That actually sounds super potentially useful.  I like that idea.
+2026-04-02 19:28:09,100 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:28:09,101 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:28:09,102 [INFO] __main__: Stage=Clarify Mood=happy Advance=False
+2026-04-02 19:28:09,720 [ERROR] __main__: TTS/audio playback error: Error opening 'response.wav': Format not recognised.
+2026-04-02 19:28:52,938 [INFO] faster_whisper: Processing audio with duration 00:04.416
+2026-04-02 19:28:53,270 [INFO] faster_whisper: Detected language 'en' with probability 0.97
+2026-04-02 19:28:53,674 [INFO] __main__: Transcribed: Um, hello?  Were you gonna say something?
+2026-04-02 19:29:07,729 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:29:07,729 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:29:07,729 [INFO] __main__: Stage=Clarify Mood=neutral Advance=False
+2026-04-02 19:29:47,750 [INFO] faster_whisper: Processing audio with duration 00:16.896
+2026-04-02 19:29:48,407 [INFO] faster_whisper: Detected language 'en' with probability 1.00
+2026-04-02 19:29:49,350 [INFO] __main__: Transcribed: Yes, that would 100% be worth exploring further.  I'd even further tweak that to include all potentially profitable for X pairs.  Not just Euro USD.
+2026-04-02 19:30:14,258 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:30:14,258 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:30:14,258 [INFO] __main__: Stage=Clarify Mood=neutral Advance=False
+2026-04-02 19:31:10,723 [INFO] faster_whisper: Processing audio with duration 00:22.080
+2026-04-02 19:31:11,400 [INFO] faster_whisper: Detected language 'en' with probability 1.00
+2026-04-02 19:31:12,495 [INFO] __main__: Transcribed: So I don't know if I'm as comfortable with that because there's a potential for a bad trading algorithms and I rather just place the trades manually rather than relying on the algorithm to do it for me.
+2026-04-02 19:31:44,153 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:31:44,153 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:31:44,153 [INFO] __main__: Stage=Clarify Mood=neutral Advance=False
+2026-04-02 19:32:27,149 [INFO] faster_whisper: Processing audio with duration 00:05.312
+2026-04-02 19:32:27,820 [INFO] faster_whisper: Detected language 'en' with probability 0.97
+2026-04-02 19:32:28,595 [INFO] __main__: Transcribed: I actually love that idea.  That's perfect.
+2026-04-02 19:32:41,844 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:32:41,845 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:32:41,846 [INFO] __main__: Stage=Clarify Mood=happy Advance=False
+2026-04-02 19:32:42,478 [ERROR] __main__: TTS/audio playback error: Error opening 'response.wav': Format not recognised.
+2026-04-02 19:32:55,236 [INFO] faster_whisper: Processing audio with duration 00:08.448
+2026-04-02 19:32:55,913 [INFO] faster_whisper: Detected language 'en' with probability 1.00
+2026-04-02 19:32:56,701 [INFO] __main__: Transcribed: I said I actually love that idea that sounds pretty like really good.
+2026-04-02 19:33:04,239 [INFO] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+2026-04-02 19:33:04,240 [INFO] __main__: LLM response received from Ollama.
+2026-04-02 19:33:04,240 [INFO] __main__: Stage=Clarify Mood=happy Advance=False
+2026-04-02 19:33:04,869 [ERROR] __main__: TTS/audio playback error: Error opening 'response.wav': Format not recognised.
+2026-04-02 19:43:42,976 [INFO] faster_whisper: Processing audio with duration 00:04.736
+2026-04-02 19:43:43,332 [INFO] faster_whisper: Detected language 'en' with probability 0.95
+2026-04-02 19:43:43,773 [INFO] __main__: Transcribed: I said I like that idea a lot.
+2026-04-02 21:09:37,915 [ERROR] root: No Reachy Mini Audio USB device found!
+2026-04-02 21:11:35,965 [ERROR] root: No Reachy Mini Audio USB device found!
