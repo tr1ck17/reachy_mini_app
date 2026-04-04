@@ -9,15 +9,11 @@ Architecture:
 - Robot: reachy-mini SDK (sim or real hardware)
 - CPS: stage-aware facilitation via cps_manager
 - Memory: rolling 5-session memory via memory_manager
+- Dashboard: live state updates via dashboard_state
 
 Recording:
 - Press Enter once to START speaking
 - Press Enter again to STOP speaking and trigger response
-
-Transcripts:
-- Each CPS problem has one transcript file that grows across sessions
-- Continuing a session appends to the same file with a session break marker
-- Starting fresh creates a new transcript file with a new session ID
 """
 
 import asyncio
@@ -48,6 +44,7 @@ from memory_manager import (
     load_session_id, save_session_id, new_session_id,
     clear_session_id, MEMORY_FILE, STAGE_FILE, SESSION_FILE
 )
+import dashboard_state as ds
 
 # ── Logging Setup ─────────────────────────────────────────────────────────────
 
@@ -61,7 +58,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Suppress noisy third-party loggers from terminal (still written to log file)
 for noisy in ["reachy_mini", "httpx", "faster_whisper", "root"]:
     logging.getLogger(noisy).setLevel(logging.ERROR)
 
@@ -76,6 +72,9 @@ MIN_AUDIO_VOLUME = 0.0005
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 USE_CLAUDE        = bool(ANTHROPIC_API_KEY)
+
+# If launched from the browser launcher, session mode is passed via env var
+LAUNCHER_MODE = os.environ.get("REACHY_SESSION_MODE")  # "continue" or "new" or None
 
 THINKING_PHRASES = [
     "Hmm, let me think about that...",
@@ -97,6 +96,18 @@ next stage. For example: "I think we've got a really clear picture here — want
 brainstorming ideas?" or "That feels like a solid plan — ready to move on to the next stage?"
 Do NOT automatically advance — always ask first and let the user decide.
 
+When your response contains a key artifact, tag it on a new line using one of these formats:
+ARTIFACT_CHALLENGE: <the challenge statement>
+ARTIFACT_FOCUS: <the focus question>
+ARTIFACT_IDEA: <a single idea>
+ARTIFACT_CLUSTER: <a cluster heading>
+ARTIFACT_PLUS: <a plus/strength>
+ARTIFACT_POTENTIAL: <a potential>
+ARTIFACT_CONCERN: <a concern>
+ARTIFACT_ACTION: <an action step>
+ARTIFACT_COMMIT: <a committed action>
+Only tag artifacts when they are clearly and explicitly stated. Do not force tags.
+
 After your response, on a new line write:
 MOOD: [one of: happy, thinking, surprised, neutral]"""
 
@@ -114,17 +125,11 @@ except Exception as e:
 # ── TTS ───────────────────────────────────────────────────────────────────────
 
 async def _speak_async(text: str, filepath: str):
-    """Generate TTS audio and save to a unique filepath."""
     communicate = edge_tts.Communicate(text, voice=VOICE)
     await communicate.save(filepath)
 
 
 def speak(text: str):
-    """
-    Convert text to speech and play it.
-    Uses a unique filename per call to avoid file lock conflicts.
-    Falls back to printing if audio fails.
-    """
     filepath = f"tts_{uuid.uuid4().hex[:8]}.wav"
     try:
         asyncio.run(_speak_async(text, filepath))
@@ -145,10 +150,6 @@ def speak(text: str):
 # ── Robot Expressions ─────────────────────────────────────────────────────────
 
 def express_mood(mini, mood: str):
-    """
-    Trigger robot movement based on detected mood.
-    Silently skips on error to avoid crashing the conversation.
-    """
     try:
         if mood == "happy":
             mini.goto_target(antennas=[0.6, 0.6], duration=0.3)
@@ -165,21 +166,53 @@ def express_mood(mini, mood: str):
         logger.warning(f"Robot expression error (mood={mood}): {e}")
 
 
-# ── Response Parsing ──────────────────────────────────────────────────────────
+# ── Response Parsing + Artifact Extraction ────────────────────────────────────
+
+ARTIFACT_TAGS = {
+    "ARTIFACT_CHALLENGE": ("clarify",   "challenge_statement", "set"),
+    "ARTIFACT_FOCUS":     ("clarify",   "focus_question",      "set"),
+    "ARTIFACT_IDEA":      ("ideate",    "ideas",               "append"),
+    "ARTIFACT_CLUSTER":   ("ideate",    "clusters",            "append"),
+    "ARTIFACT_PLUS":      ("develop",   "plusses",             "append"),
+    "ARTIFACT_POTENTIAL": ("develop",   "potentials",          "append"),
+    "ARTIFACT_CONCERN":   ("develop",   "concerns",            "append"),
+    "ARTIFACT_ACTION":    ("develop",   "action_steps",        "append"),
+    "ARTIFACT_COMMIT":    ("implement", "committed_actions",   "append"),
+}
+
 
 def parse_response(raw: str) -> tuple[str, str]:
     """
-    Parse the LLM response into (text, mood).
-    Extracts MOOD: tag and returns clean spoken text.
+    Parse LLM response into (spoken_text, mood).
+    Extracts MOOD: and ARTIFACT_*: tags, updates dashboard state,
+    and returns only the clean spoken text.
     """
-    lines  = raw.strip().split("\n")
-    mood   = "neutral"
+    lines      = raw.strip().split("\n")
+    mood       = "neutral"
     text_lines = []
 
     for line in lines:
-        if line.startswith("MOOD:"):
-            mood = line.replace("MOOD:", "").strip().lower()
-        else:
+        stripped = line.strip()
+
+        if stripped.startswith("MOOD:"):
+            mood = stripped.replace("MOOD:", "").strip().lower()
+            continue
+
+        # Check for artifact tags
+        matched = False
+        for tag, (stage, key, action) in ARTIFACT_TAGS.items():
+            if stripped.startswith(f"{tag}:"):
+                value = stripped[len(tag) + 1:].strip()
+                if value:
+                    if action == "set":
+                        ds.set_artifact(stage, key, value)
+                    else:
+                        ds.append_artifact(stage, key, value)
+                    logger.info(f"Artifact captured [{tag}]: {value}")
+                matched = True
+                break
+
+        if not matched:
             text_lines.append(line)
 
     text = " ".join(text_lines).strip()
@@ -189,10 +222,6 @@ def parse_response(raw: str) -> tuple[str, str]:
 # ── LLM ──────────────────────────────────────────────────────────────────────
 
 def llm_call(system_prompt: str, messages: list) -> str:
-    """
-    Call the LLM. Uses Claude API if ANTHROPIC_API_KEY is set,
-    otherwise falls back to Ollama. Raises on total failure.
-    """
     if USE_CLAUDE:
         try:
             client   = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -211,7 +240,6 @@ def llm_call(system_prompt: str, messages: list) -> str:
         except Exception as e:
             logger.warning(f"Claude API error: {e} — falling back to Ollama.")
 
-    # Ollama fallback
     try:
         response = ollama.chat(
             model=OLLAMA_MODEL,
@@ -227,11 +255,6 @@ def llm_call(system_prompt: str, messages: list) -> str:
 # ── Audio Input ───────────────────────────────────────────────────────────────
 
 def record_audio() -> str:
-    """
-    Record audio from the microphone using a background thread.
-    Press Enter to stop recording and trigger transcription.
-    Uses unique filenames to avoid file lock conflicts.
-    """
     print("🎤 Recording... press Enter again when you're done speaking.")
 
     chunks    = []
@@ -267,7 +290,6 @@ def record_audio() -> str:
     volume = np.sqrt(np.mean(audio**2))
 
     if volume < MIN_AUDIO_VOLUME:
-        logger.warning("Audio too quiet — possible mic issue.")
         print("Too quiet — please speak up and try again.")
         return ""
 
@@ -294,16 +316,9 @@ def record_audio() -> str:
 
 def chat(mini, current_session: dict, past_context: list,
          user_message: str, current_stage: str) -> None:
-    """
-    Process one conversation turn:
-    1. Acknowledge with a thinking phrase and expression
-    2. Call the LLM
-    3. Parse response
-    4. Express mood and speak
-    5. Save to session history
-    """
     system_prompt = build_system_prompt(current_stage, BASE_SYSTEM_PROMPT)
     append_to_session(current_session, "user", user_message)
+    ds.add_transcript_entry("user", user_message, current_stage)
     messages = past_context + current_session["history"]
 
     express_mood(mini, "thinking")
@@ -320,22 +335,30 @@ def chat(mini, current_session: dict, past_context: list,
     logger.info(f"Stage={stage_label(current_stage)} Mood={mood}")
     print(f"Reachy ({mood}) [{stage_label(current_stage)}]: {text}")
 
+    ds.add_transcript_entry("assistant", text, current_stage)
     express_mood(mini, mood)
     speak(text)
     append_to_session(current_session, "assistant", text)
 
 
-# ── Session Mode Prompt ───────────────────────────────────────────────────────
+# ── Session Mode ──────────────────────────────────────────────────────────────
 
 def prompt_session_mode() -> bool:
     """
-    Ask the user whether to continue the previous session or start fresh.
+    Determine whether to start fresh or continue.
+    If launched from the browser (REACHY_SESSION_MODE env var is set),
+    use that. Otherwise ask the user in the terminal.
     Returns True if starting fresh.
     """
+    if LAUNCHER_MODE == "new":
+        return True
+    if LAUNCHER_MODE == "continue":
+        return False
+
+    # Manual terminal launch — ask the user
     has_previous = any(
         os.path.exists(f) for f in [MEMORY_FILE, STAGE_FILE, SESSION_FILE]
     )
-
     if not has_previous:
         return True
 
@@ -361,40 +384,35 @@ def main():
 
     if USE_CLAUDE:
         print("LLM: Claude API (claude-haiku)")
-        logger.info("Using Claude API for LLM responses.")
     else:
         print("LLM: Ollama fallback (no ANTHROPIC_API_KEY found)")
         logger.warning("ANTHROPIC_API_KEY not set — using Ollama. Expect slower responses.")
 
-    # Ask user whether to continue or start fresh
     start_fresh = prompt_session_mode()
 
     if start_fresh:
-        # Clear all saved state for a clean run
         for f in [MEMORY_FILE, STAGE_FILE, SESSION_FILE]:
             if os.path.exists(f):
                 try:
                     os.remove(f)
-                    logger.info(f"Cleared: {f}")
                 except IOError as e:
                     logger.error(f"Could not clear {f}: {e}")
-        # Generate a new session ID for this fresh problem
         session_id = new_session_id()
         save_session_id(session_id)
-        logger.info(f"New session ID: {session_id}")
+        ds.reset()
     else:
-        # Load existing session ID or create one if missing
         session_id = load_session_id()
         if not session_id:
             session_id = new_session_id()
             save_session_id(session_id)
-            logger.info(f"No session ID found — created new: {session_id}")
 
-    # Load memory and stage
     sessions        = load_memory()
     past_context    = build_history_context(sessions)
     current_session = start_session()
     current_stage   = load_stage_state() or STAGES[0]
+
+    ds.set_stage(current_stage)
+    ds.set_active(True)
 
     print(f"\nCPS Stage: {stage_label(current_stage)}")
     print(f"Memory: {len(sessions)} past session(s) loaded")
@@ -424,12 +442,12 @@ def main():
                 if not user_input:
                     continue
 
-                # Check if user explicitly wants to advance stage
                 if check_for_advance(user_input):
                     nxt = next_stage(current_stage)
                     if nxt:
                         current_stage = nxt
                         save_stage(current_stage)
+                        ds.set_stage(current_stage)
                         logger.info(f"Advancing to stage: {current_stage}")
                         print(f"\n--- Stage: {stage_label(current_stage)} ---\n")
                         speak(f"Great — let's move into the {stage_label(current_stage)} stage!")
@@ -448,6 +466,7 @@ def main():
         logger.critical(f"Unexpected error: {e}", exc_info=True)
         print(f"\nUnexpected error: {e}")
     finally:
+        ds.set_active(False)
         close_session(sessions, current_session)
         export_session(current_session, session_id)
         save_stage(current_stage)
@@ -457,4 +476,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-```
