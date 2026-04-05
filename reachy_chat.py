@@ -38,6 +38,7 @@ import anthropic
 import edge_tts
 import numpy as np
 import ollama
+import pygame
 import sounddevice as sd
 import soundfile as sf
 from faster_whisper import WhisperModel
@@ -169,12 +170,21 @@ async def _speak_async(text: str, filepath: str):
 
 
 def speak(text: str):
-    filepath = f"tts_{uuid.uuid4().hex[:8]}.wav"
+    """
+    Convert text to speech and play it.
+    Uses MP3 format via pygame for cross-platform compatibility.
+    Falls back to printing if audio fails.
+    """
+    filepath = f"tts_{uuid.uuid4().hex[:8]}.mp3"
     try:
         asyncio.run(_speak_async(text, filepath))
-        data, samplerate = sf.read(filepath)
-        sd.play(data, samplerate)
-        sd.wait()
+        pygame.mixer.init()
+        pygame.mixer.music.load(filepath)
+        pygame.mixer.music.play()
+        while pygame.mixer.music.get_busy():
+            pygame.time.wait(100)
+        pygame.mixer.music.stop()
+        pygame.mixer.quit()
     except Exception as e:
         logger.error(f"TTS/audio playback error: {e}")
         print(f"[Reachy would say]: {text}")
