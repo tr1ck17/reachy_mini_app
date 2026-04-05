@@ -31,6 +31,9 @@ import threading
 import time
 import uuid
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import anthropic
 import edge_tts
 import numpy as np
