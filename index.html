@@ -104,6 +104,8 @@
     .btn-secondary:hover:not(:disabled) { border-color: var(--dim); transform: translateY(-1px); }
     .btn-danger { background: transparent; color: var(--rose); border: 1px solid rgba(248,113,113,0.3); font-size: 0.8rem; padding: 0.6rem 1rem; }
     .btn-danger:hover:not(:disabled) { background: rgba(248,113,113,0.08); border-color: var(--rose); }
+    .btn-ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); font-size: 0.8rem; padding: 0.6rem 1rem; display:flex; align-items:center; justify-content:center; gap:0.4rem; }
+    .btn-ghost:hover { border-color: var(--dim); color: var(--text); }
 
     .launch-status { font-family: 'JetBrains Mono', monospace; font-size: 0.72rem; text-align: center; min-height: 1.2em; color: var(--muted); }
     .launch-status.ok  { color: var(--green); }
@@ -236,6 +238,7 @@
     <div class="launcher-btns">
       <button class="btn btn-primary" id="btnContinue" onclick="launch('continue')" disabled>▶ Continue Session</button>
       <button class="btn btn-secondary" id="btnNew" onclick="launch('new')">✦ Start New Session</button>
+      <a href="/history" class="btn btn-ghost" style="text-decoration:none">📖 View Session History</a>
       <button class="btn btn-danger" id="btnClear" onclick="requestClear()" disabled>🗑 Clear All History</button>
     </div>
     <p class="launch-status" id="launchStatus"></p>

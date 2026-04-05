@@ -82,13 +82,20 @@ ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 USE_CLAUDE        = bool(ANTHROPIC_API_KEY)
 LAUNCHER_MODE     = os.environ.get("REACHY_SESSION_MODE")
 
-THINKING_PHRASES = [
-    "Hmm, let me think about that...",
+THINKING_PHRASES_QUESTION = [
     "Good question, give me a moment...",
+    "Hmm, let me think about that...",
+    "Interesting question, let me reflect...",
     "Let me sit with that for a second...",
-    "Interesting, let me think...",
-    "Mmm, give me just a moment...",
+    "That's worth thinking about carefully...",
+]
+
+THINKING_PHRASES_STATEMENT = [
     "Let me reflect on that...",
+    "Mmm, give me just a moment...",
+    "I hear you, let me think...",
+    "Got it, just a moment...",
+    "Let me process that...",
 ]
 
 STAGE_GREETINGS = {
@@ -405,7 +412,9 @@ def chat(mini, current_session: dict, past_context: list,
 
     stop_idle()
     express_mood(mini, "thinking")
-    speak(random.choice(THINKING_PHRASES))
+    is_question = user_message.strip().endswith("?")
+    phrases = THINKING_PHRASES_QUESTION if is_question else THINKING_PHRASES_STATEMENT
+    speak(random.choice(phrases))
 
     try:
         raw = llm_call(system_prompt, messages)

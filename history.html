@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reachy Mini — Session History</title>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@300;400;500&family=Bricolage+Grotesque:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #080810;
+      --surface:  #0f0f1a;
+      --surface2: #161625;
+      --border:   #1c1c30;
+      --accent:   #6366f1;
+      --accent2:  #818cf8;
+      --green:    #34d399;
+      --sky:      #38bdf8;
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --dim:      #334155;
+      --rose:     #f87171;
+    }
+
+    html, body {
+      height: 100%; background: var(--bg); color: var(--text);
+      font-family: 'Bricolage Grotesque', sans-serif;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse 70% 40% at 15% 15%, rgba(99,102,241,0.06) 0%, transparent 60%),
+        radial-gradient(ellipse 50% 30% at 85% 85%, rgba(56,189,248,0.04) 0%, transparent 60%);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ── Layout ── */
+    .app {
+      position: relative; z-index: 1;
+      height: 100vh;
+      display: grid;
+      grid-template-rows: 56px 1fr;
+      grid-template-columns: 320px 1fr;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      grid-column: 1 / -1;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 1.5rem;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .topbar-left { display: flex; align-items: center; gap: 1rem; }
+
+    .back-btn {
+      display: flex; align-items: center; gap: 0.4rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem; color: var(--muted);
+      text-decoration: none; letter-spacing: 0.05em;
+      transition: color 0.2s;
+    }
+    .back-btn:hover { color: var(--text); }
+
+    .topbar-title {
+      font-family: 'Instrument Serif', serif;
+      font-size: 1.1rem; font-weight: 400;
+    }
+
+    .topbar-right {
+      display: flex; align-items: center; gap: 1rem;
+    }
+
+    .search-input {
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; padding: 0.4rem 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem; color: var(--text);
+      width: 220px; outline: none;
+      transition: border-color 0.2s;
+    }
+    .search-input::placeholder { color: var(--dim); }
+    .search-input:focus { border-color: var(--accent); }
+
+    .count-badge {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65rem; color: var(--muted);
+      letter-spacing: 0.1em;
+    }
+
+    /* ── Left panel — transcript list ── */
+    .panel-list {
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      overflow-y: auto;
+      display: flex; flex-direction: column;
+    }
+
+    .list-empty {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem; color: var(--dim);
+      padding: 2rem; text-align: center;
+    }
+
+    .list-empty-icon { font-size: 2rem; }
+
+    .transcript-item {
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.15s;
+      display: flex; flex-direction: column; gap: 0.4rem;
+    }
+    .transcript-item:hover    { background: var(--surface2); }
+    .transcript-item.selected { background: rgba(99,102,241,0.08); border-left: 2px solid var(--accent); }
+
+    .item-date {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65rem; color: var(--accent2);
+      letter-spacing: 0.08em;
+    }
+
+    .item-preview {
+      font-size: 0.8rem; color: var(--text);
+      line-height: 1.4; font-style: italic;
+    }
+
+    .item-meta {
+      display: flex; gap: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.62rem; color: var(--muted);
+    }
+
+    .item-meta span { display: flex; align-items: center; gap: 0.3rem; }
+
+    /* ── Right panel — transcript content ── */
+    .panel-content {
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+
+    .content-header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+
+    .content-title {
+      font-family: 'Instrument Serif', serif;
+      font-size: 1rem; font-weight: 400; color: var(--text);
+    }
+
+    .content-meta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.65rem; color: var(--muted);
+    }
+
+    .content-body {
+      flex: 1; overflow-y: auto;
+      padding: 1.5rem;
+      display: flex; flex-direction: column; gap: 0;
+    }
+
+    .content-empty {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem; color: var(--dim);
+      text-align: center;
+    }
+
+    .content-empty-icon { font-size: 3rem; }
+
+    /* ── Rendered transcript ── */
+    .session-break {
+      display: flex; align-items: center; gap: 1rem;
+      margin: 1.5rem 0;
+    }
+
+    .session-break-line { flex: 1; height: 1px; background: var(--border); }
+
+    .session-break-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.6rem; color: var(--muted);
+      letter-spacing: 0.1em; text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .message {
+      display: flex; flex-direction: column; gap: 0.25rem;
+      margin-bottom: 1rem;
+      animation: fadeIn 0.2s ease;
+    }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .message-role {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase;
+    }
+    .message-role.you    { color: var(--sky); }
+    .message-role.reachy { color: var(--accent2); }
+
+    .message-text {
+      font-size: 0.875rem; line-height: 1.65; color: var(--text);
+      padding: 0.65rem 0.9rem; border-radius: 8px;
+    }
+    .message-text.you    { background: rgba(56,189,248,0.06); border: 1px solid rgba(56,189,248,0.12); }
+    .message-text.reachy { background: rgba(99,102,241,0.06); border: 1px solid rgba(99,102,241,0.12); }
+
+    /* ── Loading ── */
+    .loading {
+      display: flex; align-items: center; justify-content: center;
+      padding: 3rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem; color: var(--muted);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  </style>
+</head>
+<body>
+  <div class="app">
+
+    <!-- Top bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <a href="/" class="back-btn">← Back to Launcher</a>
+        <span style="color: var(--border)">|</span>
+        <span class="topbar-title">Session History</span>
+      </div>
+      <div class="topbar-right">
+        <span class="count-badge" id="countBadge">Loading...</span>
+        <input class="search-input" type="text" id="searchInput"
+               placeholder="Search transcripts..." oninput="filterTranscripts()" />
+      </div>
+    </header>
+
+    <!-- Left — list -->
+    <aside class="panel-list" id="panelList">
+      <div class="loading">Loading transcripts...</div>
+    </aside>
+
+    <!-- Right — content -->
+    <main class="panel-content">
+      <div class="content-header" id="contentHeader" style="display:none">
+        <span class="content-title" id="contentTitle"></span>
+        <span class="content-meta" id="contentMeta"></span>
+      </div>
+      <div class="content-body" id="contentBody">
+        <div class="content-empty">
+          <div class="content-empty-icon">📖</div>
+          <div>Select a session to read the transcript</div>
+        </div>
+      </div>
+    </main>
+
+  </div>
+
+  <script>
+    let allTranscripts = [];
+    let selectedId     = null;
+
+    // ── Load transcript list ──────────────────────────────────────────────────
+
+    async function loadTranscripts() {
+      try {
+        const res  = await fetch('/api/transcripts');
+        allTranscripts = await res.json();
+        renderList(allTranscripts);
+        document.getElementById('countBadge').textContent =
+          `${allTranscripts.length} session${allTranscripts.length !== 1 ? 's' : ''}`;
+      } catch(e) {
+        document.getElementById('panelList').innerHTML =
+          '<div class="list-empty"><div class="list-empty-icon">⚠️</div><div>Could not load transcripts</div></div>';
+      }
+    }
+
+    // ── Render list ───────────────────────────────────────────────────────────
+
+    function renderList(transcripts) {
+      const panel = document.getElementById('panelList');
+
+      if (transcripts.length === 0) {
+        panel.innerHTML = `
+          <div class="list-empty">
+            <div class="list-empty-icon">💬</div>
+            <div>No sessions found</div>
+            <div style="font-size:0.65rem;opacity:0.6">Start a CPS session to see transcripts here</div>
+          </div>`;
+        return;
+      }
+
+      panel.innerHTML = transcripts.map(t => `
+        <div class="transcript-item ${t.id === selectedId ? 'selected' : ''}"
+             onclick="loadContent('${t.id}', '${escapeAttr(t.started)}', ${t.session_count}, ${t.exchange_count})">
+          <div class="item-date">${t.started}</div>
+          <div class="item-preview">${escapeHtml(t.preview)}</div>
+          <div class="item-meta">
+            <span>💬 ${t.exchange_count} exchange${t.exchange_count !== 1 ? 's' : ''}</span>
+            <span>📅 ${t.session_count} session${t.session_count !== 1 ? 's' : ''}</span>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // ── Filter ────────────────────────────────────────────────────────────────
+
+    function filterTranscripts() {
+      const query    = document.getElementById('searchInput').value.toLowerCase();
+      const filtered = allTranscripts.filter(t =>
+        t.preview.toLowerCase().includes(query) ||
+        t.started.toLowerCase().includes(query)
+      );
+      renderList(filtered);
+      document.getElementById('countBadge').textContent =
+        `${filtered.length} of ${allTranscripts.length} session${allTranscripts.length !== 1 ? 's' : ''}`;
+    }
+
+    // ── Load transcript content ───────────────────────────────────────────────
+
+    async function loadContent(id, started, sessionCount, exchangeCount) {
+      selectedId = id;
+      renderList(filterActive());
+
+      const header = document.getElementById('contentHeader');
+      const title  = document.getElementById('contentTitle');
+      const meta   = document.getElementById('contentMeta');
+      const body   = document.getElementById('contentBody');
+
+      header.style.display = 'flex';
+      title.textContent    = started;
+      meta.textContent     = `${sessionCount} session${sessionCount !== 1 ? 's' : ''} · ${exchangeCount} exchange${exchangeCount !== 1 ? 's' : ''}`;
+      body.innerHTML       = '<div class="loading">Loading...</div>';
+
+      try {
+        const res  = await fetch(`/api/transcript/${id}`);
+        const data = await res.json();
+        if (data.error) {
+          body.innerHTML = '<div class="content-empty"><div>Transcript not found</div></div>';
+          return;
+        }
+        body.innerHTML = renderTranscript(data.content);
+      } catch(e) {
+        body.innerHTML = '<div class="content-empty"><div>Could not load transcript</div></div>';
+      }
+    }
+
+    // ── Render markdown transcript as HTML ────────────────────────────────────
+
+    function renderTranscript(markdown) {
+      const lines  = markdown.split('\n');
+      let html     = '';
+      let inMsg    = false;
+      let msgRole  = '';
+      let msgLines = [];
+
+      function flushMessage() {
+        if (!inMsg) return;
+        const text = msgLines.join(' ').trim();
+        if (text) {
+          html += `
+            <div class="message">
+              <span class="message-role ${msgRole}">${msgRole === 'you' ? 'You' : 'Reachy'}</span>
+              <div class="message-text ${msgRole}">${escapeHtml(text)}</div>
+            </div>`;
+        }
+        inMsg    = false;
+        msgRole  = '';
+        msgLines = [];
+      }
+
+      for (const line of lines) {
+        // Skip title and date lines
+        if (line.startsWith('# ') || line.startsWith('**Started:**') ||
+            line.startsWith('**Date:**')) continue;
+
+        // Session break marker
+        if (line.startsWith('## Session')) {
+          flushMessage();
+          const label = line.replace('## ', '').trim();
+          html += `
+            <div class="session-break">
+              <div class="session-break-line"></div>
+              <div class="session-break-label">${escapeHtml(label)}</div>
+              <div class="session-break-line"></div>
+            </div>`;
+          continue;
+        }
+
+        // Horizontal rule
+        if (line.trim() === '---') {
+          flushMessage();
+          continue;
+        }
+
+        // User message
+        const youMatch = line.match(/^\*\*You\*\*: (.+)/);
+        if (youMatch) {
+          flushMessage();
+          inMsg    = true;
+          msgRole  = 'you';
+          msgLines = [youMatch[1]];
+          continue;
+        }
+
+        // Reachy message
+        const reachyMatch = line.match(/^\*\*Reachy\*\*: (.+)/);
+        if (reachyMatch) {
+          flushMessage();
+          inMsg    = true;
+          msgRole  = 'reachy';
+          msgLines = [reachyMatch[1]];
+          continue;
+        }
+
+        // Continuation of current message
+        if (inMsg && line.trim()) {
+          msgLines.push(line.trim());
+        } else if (inMsg && !line.trim()) {
+          // Empty line — might be paragraph break, keep going
+        }
+      }
+
+      flushMessage();
+      return html || '<div class="content-empty"><div>No messages in this transcript</div></div>';
+    }
+
+    // ── Utilities ─────────────────────────────────────────────────────────────
+
+    function filterActive() {
+      const query = document.getElementById('searchInput').value.toLowerCase();
+      return allTranscripts.filter(t =>
+        t.preview.toLowerCase().includes(query) ||
+        t.started.toLowerCase().includes(query)
+      );
+    }
+
+    function escapeHtml(text) {
+      return String(text)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function escapeAttr(text) {
+      return String(text).replace(/'/g, "\\'");
+    }
+
+    // ── Init ──────────────────────────────────────────────────────────────────
+
+    loadTranscripts();
+  </script>
+</body>
+</html>
