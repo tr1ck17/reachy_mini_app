@@ -5,6 +5,7 @@ Uses a version counter so the frontend only updates when something changes.
 """
 
 import threading
+import time
 
 # ── State ─────────────────────────────────────────────────────────────────────
 
@@ -12,9 +13,15 @@ _lock    = threading.Lock()
 _version = 0
 
 _state = {
-    "active":         False,       # True once a session is running
-    "stage":          "clarify",   # Current CPS stage
-    "transcript":     [],          # [{role, text, stage}]
+    "active":         False,
+    "stage":          "clarify",
+    "transcript":     [],
+    "stage_timers":   {         # seconds spent in each stage
+        "clarify":   0,
+        "ideate":    0,
+        "develop":   0,
+        "implement": 0,
+    },
     "artifacts": {
         "clarify": {
             "challenge_statement": None,
@@ -36,14 +43,28 @@ _state = {
     }
 }
 
+# Timer tracking — not stored in _state directly to avoid lock contention
+_stage_start_time = None   # when current stage started
+_current_stage    = "clarify"
+
 
 # ── Read ──────────────────────────────────────────────────────────────────────
 
 def get_state() -> dict:
     with _lock:
+        # Include live elapsed time for current stage
+        state_copy = dict(_state)
+        timers_copy = dict(_state["stage_timers"])
+        if _stage_start_time is not None:
+            elapsed = time.time() - _stage_start_time
+            timers_copy[_current_stage] = (
+                _state["stage_timers"].get(_current_stage, 0) + elapsed
+            )
+        state_copy["stage_timers"] = timers_copy
+        state_copy["artifacts"]    = _state["artifacts"]
         return {
             "version": _version,
-            "state":   _state.copy()
+            "state":   state_copy
         }
 
 
@@ -55,28 +76,48 @@ def get_version() -> int:
 # ── Write ─────────────────────────────────────────────────────────────────────
 
 def _bump():
-    """Increment version counter — signals clients that data changed."""
     global _version
     _version += 1
 
 
 def set_active(active: bool):
+    global _stage_start_time
     with _lock:
         _state["active"] = active
+        if active and _stage_start_time is None:
+            _stage_start_time = time.time()
+        elif not active:
+            _commit_stage_time()
         _bump()
 
 
 def set_stage(stage: str):
+    global _stage_start_time, _current_stage
     with _lock:
-        _state["stage"] = stage
+        # Commit time spent in previous stage
+        _commit_stage_time()
+        # Start timer for new stage
+        _current_stage    = stage
+        _stage_start_time = time.time()
+        _state["stage"]   = stage
         _bump()
 
 
+def _commit_stage_time():
+    """Commit elapsed time from the current stage timer into state. Must be called with lock held."""
+    global _stage_start_time
+    if _stage_start_time is not None and _current_stage:
+        elapsed = time.time() - _stage_start_time
+        _state["stage_timers"][_current_stage] = (
+            _state["stage_timers"].get(_current_stage, 0) + elapsed
+        )
+        _stage_start_time = None
+
+
 def add_transcript_entry(role: str, text: str, stage: str):
-    """Add a line to the live transcript."""
     with _lock:
         _state["transcript"].append({
-            "role":  role,   # "user" or "assistant"
+            "role":  role,
             "text":  text,
             "stage": stage,
         })
@@ -84,7 +125,6 @@ def add_transcript_entry(role: str, text: str, stage: str):
 
 
 def set_artifact(stage: str, key: str, value):
-    """Set a single artifact value for a stage."""
     with _lock:
         if stage in _state["artifacts"] and key in _state["artifacts"][stage]:
             _state["artifacts"][stage][key] = value
@@ -92,7 +132,6 @@ def set_artifact(stage: str, key: str, value):
 
 
 def append_artifact(stage: str, key: str, value: str):
-    """Append a value to a list artifact."""
     with _lock:
         if stage in _state["artifacts"] and key in _state["artifacts"][stage]:
             if isinstance(_state["artifacts"][stage][key], list):
@@ -101,12 +140,17 @@ def append_artifact(stage: str, key: str, value: str):
 
 
 def reset():
-    """Reset all state for a fresh session."""
-    global _version
+    global _version, _stage_start_time, _current_stage
     with _lock:
         _state["active"]    = False
         _state["stage"]     = "clarify"
         _state["transcript"] = []
+        _state["stage_timers"] = {
+            "clarify":   0,
+            "ideate":    0,
+            "develop":   0,
+            "implement": 0,
+        }
         _state["artifacts"] = {
             "clarify": {
                 "challenge_statement": None,
@@ -126,4 +170,6 @@ def reset():
                 "committed_actions": [],
             },
         }
-        _version = 0
+        _version          = 0
+        _stage_start_time = None
+        _current_stage    = "clarify"

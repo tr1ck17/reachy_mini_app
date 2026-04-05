@@ -15,11 +15,12 @@ Recording:
 - Press Enter once to START speaking
 - Press Enter again to STOP speaking and trigger response
 
-Additions:
+Features:
 - Mic check on startup
 - Idle animations while waiting for input
 - Stage-specific greetings on transition
 - Session summary on quit
+- Stage timer tracking
 """
 
 import asyncio
@@ -90,7 +91,6 @@ THINKING_PHRASES = [
     "Let me reflect on that...",
 ]
 
-# Stage-specific greetings when transitioning into a new stage
 STAGE_GREETINGS = {
     "clarify": [
         "Let's start by really understanding your challenge. Tell me what's on your mind.",
@@ -179,11 +179,6 @@ def speak(text: str):
 # ── Mic Check ─────────────────────────────────────────────────────────────────
 
 def check_mic() -> bool:
-    """
-    Record 1 second of audio and check the volume level.
-    Returns True if mic is working, False if too quiet.
-    Warns the user but does not block startup.
-    """
     print("🎤 Checking microphone...")
     try:
         audio = sd.rec(int(SAMPLE_RATE * 1.0), samplerate=SAMPLE_RATE,
@@ -225,43 +220,30 @@ def express_mood(mini, mood: str):
 
 # ── Idle Animations ───────────────────────────────────────────────────────────
 
-_idle_stop  = threading.Event()
+_idle_stop   = threading.Event()
 _idle_thread = None
 
 
 def _idle_loop(mini):
-    """
-    Runs in a background thread while waiting for user input.
-    Performs subtle, randomized idle movements to make Reachy feel alive.
-    """
     idle_moves = [
-        # Gentle head tilt left
         lambda: mini.goto_target(head=create_head_pose(roll=-8, degrees=True), duration=1.5),
-        # Gentle head tilt right
         lambda: mini.goto_target(head=create_head_pose(roll=8, degrees=True), duration=1.5),
-        # Subtle look up
         lambda: mini.goto_target(head=create_head_pose(z=5, mm=True), duration=1.5),
-        # Return to neutral
         lambda: mini.goto_target(head=create_head_pose(), antennas=[0, 0], duration=1.0),
-        # Gentle antenna bob
         lambda: (
             mini.goto_target(antennas=[0.15, 0.15], duration=0.8),
             mini.goto_target(antennas=[0, 0], duration=0.8)
         ),
     ]
-
     while not _idle_stop.is_set():
         try:
-            move = random.choice(idle_moves)
-            move()
-            # Wait 3-6 seconds between idle moves
+            random.choice(idle_moves)()
             _idle_stop.wait(timeout=random.uniform(3.0, 6.0))
         except Exception:
             break
 
 
 def start_idle(mini):
-    """Start idle animation in background thread."""
     global _idle_thread, _idle_stop
     _idle_stop.clear()
     _idle_thread = threading.Thread(target=_idle_loop, args=(mini,), daemon=True)
@@ -269,7 +251,6 @@ def start_idle(mini):
 
 
 def stop_idle():
-    """Stop idle animation and wait for thread to finish."""
     global _idle_thread
     _idle_stop.set()
     if _idle_thread and _idle_thread.is_alive():
@@ -311,7 +292,6 @@ def parse_response(raw: str) -> tuple[str, str]:
                         ds.set_artifact(stage, key, value)
                     else:
                         ds.append_artifact(stage, key, value)
-                    logger.info(f"Artifact captured [{tag}]: {value}")
                 matched = True
                 break
         if not matched:
@@ -356,7 +336,7 @@ def llm_call(system_prompt: str, messages: list) -> str:
 # ── Audio Input ───────────────────────────────────────────────────────────────
 
 def record_audio() -> str:
-    time.sleep(0.5)  # brief pause to let TTS audio tail off
+    time.sleep(0.5)
     print("🎤 Recording... press Enter again when you're done speaking.")
 
     chunks    = []
@@ -443,27 +423,19 @@ def chat(mini, current_session: dict, past_context: list,
     express_mood(mini, mood)
     speak(text)
     append_to_session(current_session, "assistant", text)
-
-    # Resume idle after speaking
     start_idle(mini)
 
 
 # ── Session Summary ───────────────────────────────────────────────────────────
 
 def generate_summary(current_session: dict, current_stage: str) -> str:
-    """
-    Generate a brief spoken summary of what was accomplished this session.
-    Uses the session history to count exchanges and note the stage reached.
-    """
-    history  = current_session.get("history", [])
+    history   = current_session.get("history", [])
     exchanges = len([m for m in history if m["role"] == "user"])
+    stage     = stage_label(current_stage)
 
     if exchanges == 0:
         return "We didn't get much done this time — but I'll be here when you're ready!"
-
-    stage = stage_label(current_stage)
-
-    if exchanges <= 3:
+    elif exchanges <= 3:
         return f"Short session today — we made a start in the {stage} stage. See you next time!"
     elif exchanges <= 8:
         return f"Good work today! We had {exchanges} exchanges in the {stage} stage. Making solid progress."
@@ -511,7 +483,6 @@ def main():
         print("LLM: Ollama fallback (no ANTHROPIC_API_KEY found)")
         logger.warning("ANTHROPIC_API_KEY not set — using Ollama. Expect slower responses.")
 
-    # Mic check
     check_mic()
 
     start_fresh = prompt_session_mode()
@@ -537,6 +508,7 @@ def main():
     current_session = start_session()
     current_stage   = load_stage_state() or STAGES[0]
 
+    # Start stage timer for the current stage
     ds.set_stage(current_stage)
     ds.set_active(True)
 
@@ -552,8 +524,6 @@ def main():
     try:
         with ReachyMini() as mini:
             logger.info("Connected to Reachy Mini.")
-
-            # Opening greeting
             speak("Hey there! I'm here whenever you're ready to talk. What's on your mind?")
             start_idle(mini)
 
@@ -581,10 +551,9 @@ def main():
                     if nxt:
                         current_stage = nxt
                         save_stage(current_stage)
-                        ds.set_stage(current_stage)
+                        ds.set_stage(current_stage)  # commits old timer, starts new
                         logger.info(f"Advancing to stage: {current_stage}")
                         print(f"\n--- Stage: {stage_label(current_stage)} ---\n")
-                        # Stage-specific greeting
                         greeting = random.choice(STAGE_GREETINGS[current_stage])
                         speak(greeting)
                     else:
