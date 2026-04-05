@@ -14,6 +14,12 @@ Architecture:
 Recording:
 - Press Enter once to START speaking
 - Press Enter again to STOP speaking and trigger response
+
+Additions:
+- Mic check on startup
+- Idle animations while waiting for input
+- Stage-specific greetings on transition
+- Session summary on quit
 """
 
 import asyncio
@@ -21,6 +27,7 @@ import logging
 import os
 import random
 import threading
+import time
 import uuid
 
 import anthropic
@@ -42,7 +49,7 @@ from memory_manager import (
     close_session, load_memory, start_session,
     save_stage, load_stage_state, export_session,
     load_session_id, save_session_id, new_session_id,
-    clear_session_id, MEMORY_FILE, STAGE_FILE, SESSION_FILE
+    MEMORY_FILE, STAGE_FILE, SESSION_FILE
 )
 import dashboard_state as ds
 
@@ -72,9 +79,7 @@ MIN_AUDIO_VOLUME = 0.0005
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 USE_CLAUDE        = bool(ANTHROPIC_API_KEY)
-
-# If launched from the browser launcher, session mode is passed via env var
-LAUNCHER_MODE = os.environ.get("REACHY_SESSION_MODE")  # "continue" or "new" or None
+LAUNCHER_MODE     = os.environ.get("REACHY_SESSION_MODE")
 
 THINKING_PHRASES = [
     "Hmm, let me think about that...",
@@ -84,6 +89,30 @@ THINKING_PHRASES = [
     "Mmm, give me just a moment...",
     "Let me reflect on that...",
 ]
+
+# Stage-specific greetings when transitioning into a new stage
+STAGE_GREETINGS = {
+    "clarify": [
+        "Let's start by really understanding your challenge. Tell me what's on your mind.",
+        "I'm ready to explore this with you. What's the challenge you're working on?",
+        "Let's dig into this together. What would it be great if you could achieve?",
+    ],
+    "ideate": [
+        "Alright — brainstorming time! No idea is too wild here. Let's go!",
+        "Time to get creative. We're going for volume — as many ideas as possible!",
+        "Let's open the floodgates. Every idea counts at this stage, even the crazy ones!",
+    ],
+    "develop": [
+        "Now we get to strengthen your best idea. Let's make it as solid as possible.",
+        "Time to dig deeper. Let's figure out what's great about this idea and what needs work.",
+        "Let's build this out properly — the good, the exciting, and the challenges.",
+    ],
+    "implement": [
+        "Time to make it real. Let's turn this plan into concrete next steps.",
+        "We're in the home stretch — let's figure out exactly how to make this happen.",
+        "Let's get specific. What does actually doing this look like?",
+    ],
+}
 
 BASE_SYSTEM_PROMPT = """You are Reachy Mini, a friendly, curious, and expressive small robot companion
 and Creative Problem Solving facilitator. You speak in short, warm, conversational sentences.
@@ -147,6 +176,34 @@ def speak(text: str):
             pass
 
 
+# ── Mic Check ─────────────────────────────────────────────────────────────────
+
+def check_mic() -> bool:
+    """
+    Record 1 second of audio and check the volume level.
+    Returns True if mic is working, False if too quiet.
+    Warns the user but does not block startup.
+    """
+    print("🎤 Checking microphone...")
+    try:
+        audio = sd.rec(int(SAMPLE_RATE * 1.0), samplerate=SAMPLE_RATE,
+                       channels=1, dtype="float32")
+        sd.wait()
+        volume = np.sqrt(np.mean(audio**2))
+        if volume < MIN_AUDIO_VOLUME:
+            print("⚠️  Mic seems very quiet. Check your microphone settings before speaking.")
+            logger.warning(f"Mic check failed — volume: {volume:.4f}")
+            return False
+        else:
+            print(f"✅ Mic OK (volume: {volume:.4f})")
+            logger.info(f"Mic check passed — volume: {volume:.4f}")
+            return True
+    except Exception as e:
+        logger.error(f"Mic check error: {e}")
+        print("⚠️  Could not check microphone. Proceeding anyway.")
+        return False
+
+
 # ── Robot Expressions ─────────────────────────────────────────────────────────
 
 def express_mood(mini, mood: str):
@@ -166,6 +223,60 @@ def express_mood(mini, mood: str):
         logger.warning(f"Robot expression error (mood={mood}): {e}")
 
 
+# ── Idle Animations ───────────────────────────────────────────────────────────
+
+_idle_stop  = threading.Event()
+_idle_thread = None
+
+
+def _idle_loop(mini):
+    """
+    Runs in a background thread while waiting for user input.
+    Performs subtle, randomized idle movements to make Reachy feel alive.
+    """
+    idle_moves = [
+        # Gentle head tilt left
+        lambda: mini.goto_target(head=create_head_pose(roll=-8, degrees=True), duration=1.5),
+        # Gentle head tilt right
+        lambda: mini.goto_target(head=create_head_pose(roll=8, degrees=True), duration=1.5),
+        # Subtle look up
+        lambda: mini.goto_target(head=create_head_pose(z=5, mm=True), duration=1.5),
+        # Return to neutral
+        lambda: mini.goto_target(head=create_head_pose(), antennas=[0, 0], duration=1.0),
+        # Gentle antenna bob
+        lambda: (
+            mini.goto_target(antennas=[0.15, 0.15], duration=0.8),
+            mini.goto_target(antennas=[0, 0], duration=0.8)
+        ),
+    ]
+
+    while not _idle_stop.is_set():
+        try:
+            move = random.choice(idle_moves)
+            move()
+            # Wait 3-6 seconds between idle moves
+            _idle_stop.wait(timeout=random.uniform(3.0, 6.0))
+        except Exception:
+            break
+
+
+def start_idle(mini):
+    """Start idle animation in background thread."""
+    global _idle_thread, _idle_stop
+    _idle_stop.clear()
+    _idle_thread = threading.Thread(target=_idle_loop, args=(mini,), daemon=True)
+    _idle_thread.start()
+
+
+def stop_idle():
+    """Stop idle animation and wait for thread to finish."""
+    global _idle_thread
+    _idle_stop.set()
+    if _idle_thread and _idle_thread.is_alive():
+        _idle_thread.join(timeout=2.0)
+    _idle_thread = None
+
+
 # ── Response Parsing + Artifact Extraction ────────────────────────────────────
 
 ARTIFACT_TAGS = {
@@ -182,23 +293,15 @@ ARTIFACT_TAGS = {
 
 
 def parse_response(raw: str) -> tuple[str, str]:
-    """
-    Parse LLM response into (spoken_text, mood).
-    Extracts MOOD: and ARTIFACT_*: tags, updates dashboard state,
-    and returns only the clean spoken text.
-    """
     lines      = raw.strip().split("\n")
     mood       = "neutral"
     text_lines = []
 
     for line in lines:
         stripped = line.strip()
-
         if stripped.startswith("MOOD:"):
             mood = stripped.replace("MOOD:", "").strip().lower()
             continue
-
-        # Check for artifact tags
         matched = False
         for tag, (stage, key, action) in ARTIFACT_TAGS.items():
             if stripped.startswith(f"{tag}:"):
@@ -211,12 +314,10 @@ def parse_response(raw: str) -> tuple[str, str]:
                     logger.info(f"Artifact captured [{tag}]: {value}")
                 matched = True
                 break
-
         if not matched:
             text_lines.append(line)
 
-    text = " ".join(text_lines).strip()
-    return text, mood
+    return " ".join(text_lines).strip(), mood
 
 
 # ── LLM ──────────────────────────────────────────────────────────────────────
@@ -255,6 +356,7 @@ def llm_call(system_prompt: str, messages: list) -> str:
 # ── Audio Input ───────────────────────────────────────────────────────────────
 
 def record_audio() -> str:
+    time.sleep(0.5)  # brief pause to let TTS audio tail off
     print("🎤 Recording... press Enter again when you're done speaking.")
 
     chunks    = []
@@ -321,6 +423,7 @@ def chat(mini, current_session: dict, past_context: list,
     ds.add_transcript_entry("user", user_message, current_stage)
     messages = past_context + current_session["history"]
 
+    stop_idle()
     express_mood(mini, "thinking")
     speak(random.choice(THINKING_PHRASES))
 
@@ -329,6 +432,7 @@ def chat(mini, current_session: dict, past_context: list,
     except RuntimeError as e:
         logger.error(str(e))
         speak("I'm having trouble thinking right now — could you give me a moment and try again?")
+        start_idle(mini)
         return
 
     text, mood = parse_response(raw)
@@ -340,22 +444,41 @@ def chat(mini, current_session: dict, past_context: list,
     speak(text)
     append_to_session(current_session, "assistant", text)
 
+    # Resume idle after speaking
+    start_idle(mini)
+
+
+# ── Session Summary ───────────────────────────────────────────────────────────
+
+def generate_summary(current_session: dict, current_stage: str) -> str:
+    """
+    Generate a brief spoken summary of what was accomplished this session.
+    Uses the session history to count exchanges and note the stage reached.
+    """
+    history  = current_session.get("history", [])
+    exchanges = len([m for m in history if m["role"] == "user"])
+
+    if exchanges == 0:
+        return "We didn't get much done this time — but I'll be here when you're ready!"
+
+    stage = stage_label(current_stage)
+
+    if exchanges <= 3:
+        return f"Short session today — we made a start in the {stage} stage. See you next time!"
+    elif exchanges <= 8:
+        return f"Good work today! We had {exchanges} exchanges in the {stage} stage. Making solid progress."
+    else:
+        return f"That was a productive session — {exchanges} exchanges and we're well into the {stage} stage. Great work!"
+
 
 # ── Session Mode ──────────────────────────────────────────────────────────────
 
 def prompt_session_mode() -> bool:
-    """
-    Determine whether to start fresh or continue.
-    If launched from the browser (REACHY_SESSION_MODE env var is set),
-    use that. Otherwise ask the user in the terminal.
-    Returns True if starting fresh.
-    """
     if LAUNCHER_MODE == "new":
         return True
     if LAUNCHER_MODE == "continue":
         return False
 
-    # Manual terminal launch — ask the user
     has_previous = any(
         os.path.exists(f) for f in [MEMORY_FILE, STAGE_FILE, SESSION_FILE]
     )
@@ -387,6 +510,9 @@ def main():
     else:
         print("LLM: Ollama fallback (no ANTHROPIC_API_KEY found)")
         logger.warning("ANTHROPIC_API_KEY not set — using Ollama. Expect slower responses.")
+
+    # Mic check
+    check_mic()
 
     start_fresh = prompt_session_mode()
 
@@ -426,7 +552,10 @@ def main():
     try:
         with ReachyMini() as mini:
             logger.info("Connected to Reachy Mini.")
+
+            # Opening greeting
             speak("Hey there! I'm here whenever you're ready to talk. What's on your mind?")
+            start_idle(mini)
 
             while True:
                 try:
@@ -435,11 +564,16 @@ def main():
                     break
 
                 if cmd == "quit":
-                    speak("It was great thinking with you. See you next time!")
+                    stop_idle()
+                    summary = generate_summary(current_session, current_stage)
+                    speak(summary)
+                    speak("See you next time!")
                     break
 
+                stop_idle()
                 user_input = record_audio()
                 if not user_input:
+                    start_idle(mini)
                     continue
 
                 if check_for_advance(user_input):
@@ -450,11 +584,14 @@ def main():
                         ds.set_stage(current_stage)
                         logger.info(f"Advancing to stage: {current_stage}")
                         print(f"\n--- Stage: {stage_label(current_stage)} ---\n")
-                        speak(f"Great — let's move into the {stage_label(current_stage)} stage!")
+                        # Stage-specific greeting
+                        greeting = random.choice(STAGE_GREETINGS[current_stage])
+                        speak(greeting)
                     else:
                         logger.info("All CPS stages complete.")
                         print("\n--- All stages complete! ---\n")
                         speak("We've made it through the whole process — amazing work!")
+                    start_idle(mini)
                     continue
 
                 chat(mini, current_session, past_context, user_input, current_stage)
@@ -466,6 +603,7 @@ def main():
         logger.critical(f"Unexpected error: {e}", exc_info=True)
         print(f"\nUnexpected error: {e}")
     finally:
+        stop_idle()
         ds.set_active(False)
         close_session(sessions, current_session)
         export_session(current_session, session_id)
