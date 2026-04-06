@@ -322,8 +322,16 @@ http://localhost:5000/history  ← session history viewer
 ```
 
 ### Environment Variables
+API keys are loaded from a `.env` file in the project root (gitignored, never committed).
+Copy `.env.example` to `.env` and fill in your values.
+
 ```powershell
-$env:ANTHROPIC_API_KEY="your-key"     # enables Claude API (strongly recommended)
+# .env file contents:
+ANTHROPIC_API_KEY=your-key-here   # enables Claude API (strongly recommended)
+```
+
+The following are set automatically by the launcher (not needed in .env):
+```powershell
 $env:REACHY_SESSION_MODE="continue"   # set by launcher, skip terminal prompt
 $env:REACHY_SESSION_MODE="new"        # set by launcher for fresh sessions
 ```
@@ -343,7 +351,10 @@ pip install reachy-mini[mujoco]
 git clone https://github.com/YOURUSERNAME/reachy_mini_app.git
 cd reachy_mini_app
 uv sync
-$env:ANTHROPIC_API_KEY="your-key"
+
+# Set up API key
+cp .env.example .env
+# Then edit .env and add your ANTHROPIC_API_KEY
 ```
 
 See `README.md` for full setup instructions.

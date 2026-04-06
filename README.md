@@ -61,13 +61,16 @@ uv sync
 This reads `pyproject.toml` and installs everything into a local virtual environment automatically.
 
 ### Step 3 — Set your Anthropic API key (strongly recommended)
+Copy the example env file and fill in your key:
 ```powershell
-$env:ANTHROPIC_API_KEY="your-api-key-here"
+cp .env.example .env
 ```
-Get a key from [console.anthropic.com](https://console.anthropic.com). Without this, the app falls back
-to Ollama which is significantly slower on CPU and less reliable at following CPS facilitation instructions.
+Then open `.env` and replace `your-api-key-here` with your actual key from [console.anthropic.com](https://console.anthropic.com).
 
-> To persist the key across sessions, add it to **Windows Environment Variables** via System Settings.
+The app reads the key automatically from `.env` on startup. Without it, the app falls back to Ollama
+which is significantly slower on CPU and less reliable at following CPS facilitation instructions.
+
+> `.env` is gitignored — your key will never be pushed to GitHub.
 
 ### Step 4 — Check for GPU (optional)
 ```powershell
@@ -208,7 +211,7 @@ reachy_mini_app/
 |------|---------|
 | Clone repo | `git clone https://github.com/YOURUSERNAME/reachy_mini_app.git` |
 | Install deps | `uv sync` |
-| Set API key | `$env:ANTHROPIC_API_KEY="your-key"` |
+| Set API key | Copy `.env.example` to `.env` and fill in your key |
 | Start daemon | `uv run reachy-mini-daemon --sim` |
 | Start launcher | `uv run launcher.py` |
 | Open launcher | `http://localhost:5000` |

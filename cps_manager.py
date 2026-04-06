@@ -35,6 +35,9 @@ ADVANCE_KEYWORDS = [
     "yes lets move",
     "sure let's move",
     "sure lets move",
+    "ready to move on to the next stage",
+    "i'm ready to move on to the next stage",
+    "im ready to move on to the next stage",
 ]
 
 
