@@ -5,7 +5,7 @@ Main entry point for the Reachy Mini CPS Facilitator.
 Architecture:
 - LLM: Claude API (primary) with Ollama fallback
 - STT: faster-whisper (local)
-- TTS: edge-tts (Microsoft Neural TTS)
+- TTS: edge-tts (Microsoft Neural TTS) via pygame MP3 playback
 - Robot: reachy-mini SDK (sim or real hardware)
 - CPS: stage-aware facilitation via cps_manager
 - Memory: rolling 5-session memory via memory_manager
@@ -15,18 +15,20 @@ Recording:
 - Press Enter once to START speaking
 - Press Enter again to STOP speaking and trigger response
 
-Features:
-- Mic check on startup
-- Idle animations while waiting for input
-- Stage-specific greetings on transition
-- Session summary on quit
-- Stage timer tracking
+Fixes applied:
+- Artifact tags stripped from spoken text (never spoken aloud)
+- Empty LLM response fallback phrases
+- Markdown cleaned before TTS (no asterisks spoken)
+- Numbered list with natural pauses instead of bullet run-ons
+- pygame MP3 playback for cross-platform TTS compatibility
+- Context-aware thinking phrases (question vs statement)
 """
 
 import asyncio
 import logging
 import os
 import random
+import re
 import threading
 import time
 import uuid
@@ -102,6 +104,14 @@ THINKING_PHRASES_STATEMENT = [
     "Let me process that...",
 ]
 
+EMPTY_RESPONSE_FALLBACKS = [
+    "I hear you — tell me more.",
+    "Got it. What else can you share?",
+    "Understood. Keep going.",
+    "That makes sense. What else is on your mind?",
+    "I'm with you. What else?",
+]
+
 STAGE_GREETINGS = {
     "clarify": [
         "Let's start by really understanding your challenge. Tell me what's on your mind.",
@@ -136,7 +146,11 @@ next stage. For example: "I think we've got a really clear picture here — want
 brainstorming ideas?" or "That feels like a solid plan — ready to move on to the next stage?"
 Do NOT automatically advance — always ask first and let the user decide.
 
-When your response contains a key artifact, tag it on a new line using one of these formats:
+IMPORTANT: You are the facilitator — YOU lead the process. Never ask the user what the next
+step should be. Always guide them forward confidently.
+
+When your response contains a key artifact, tag it on a new line using one of these formats.
+These tags are NEVER spoken aloud — they are metadata only:
 ARTIFACT_CHALLENGE: <the challenge statement>
 ARTIFACT_FOCUS: <the focus question>
 ARTIFACT_IDEA: <a single idea>
@@ -147,6 +161,7 @@ ARTIFACT_CONCERN: <a concern>
 ARTIFACT_ACTION: <an action step>
 ARTIFACT_COMMIT: <a committed action>
 Only tag artifacts when they are clearly and explicitly stated. Do not force tags.
+Do NOT mention the artifact tags in your spoken response — they are silent metadata.
 
 After your response, on a new line write:
 MOOD: [one of: happy, thinking, surprised, neutral]"""
@@ -162,22 +177,85 @@ except Exception as e:
     raise
 
 
+# ── Text Cleaning for Speech ──────────────────────────────────────────────────
+
+def clean_for_speech(text: str) -> str:
+    """
+    Clean LLM response text for natural speech output.
+    - Strips markdown formatting (bold, italic, headers)
+    - Converts bullet points to numbered items with natural pauses
+    - Removes any artifact tags that slipped through parsing
+    - Cleans up extra whitespace
+    """
+    # Remove any artifact tags that slipped through
+    text = re.sub(r'ARTIFACT_\w+:.*', '', text)
+
+    # Remove markdown headers
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+
+    # Remove bold and italic
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    text = re.sub(r'__(.+?)__', r'\1', text)
+    text = re.sub(r'_(.+?)_', r'\1', text)
+
+    # Convert bullet points to numbered items
+    lines   = text.split('\n')
+    cleaned = []
+    counter = 1
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith('* ') or stripped.startswith('- '):
+            content = stripped[2:].strip()
+            cleaned.append(f"{counter}. {content}")
+            counter += 1
+        else:
+            if cleaned and not cleaned[-1].endswith('.'):
+                cleaned[-1] += '.'
+            cleaned.append(stripped)
+            counter = 1  # reset numbering for new section
+
+    # Join with a pause — period creates natural TTS breath
+    result = ' '.join(cleaned)
+
+    # Clean up double periods and extra spaces
+    result = re.sub(r'\.\.+', '.', result)
+    result = re.sub(r'\s+', ' ', result).strip()
+
+    return result
+
+
 # ── TTS ───────────────────────────────────────────────────────────────────────
 
 async def _speak_async(text: str, filepath: str):
+    """Generate TTS audio and save as MP3."""
     communicate = edge_tts.Communicate(text, voice=VOICE)
     await communicate.save(filepath)
 
 
 def speak(text: str):
     """
-    Convert text to speech and play it.
-    Uses MP3 format via pygame for cross-platform compatibility.
+    Convert text to speech and play it via pygame.
+    Uses MP3 format for cross-platform compatibility.
     Falls back to printing if audio fails.
     """
+    if not text or not text.strip():
+        logger.warning("speak() called with empty text — skipping.")
+        return
+
     filepath = f"tts_{uuid.uuid4().hex[:8]}.mp3"
     try:
         asyncio.run(_speak_async(text, filepath))
+
+        # Verify file was written properly
+        if not os.path.exists(filepath) or os.path.getsize(filepath) < 500:
+            logger.warning("TTS file too small or missing — skipping playback.")
+            print(f"[Reachy would say]: {text}")
+            return
+
         pygame.mixer.init()
         pygame.mixer.music.load(filepath)
         pygame.mixer.music.play()
@@ -185,6 +263,7 @@ def speak(text: str):
             pygame.time.wait(100)
         pygame.mixer.music.stop()
         pygame.mixer.quit()
+
     except Exception as e:
         logger.error(f"TTS/audio playback error: {e}")
         print(f"[Reachy would say]: {text}")
@@ -201,18 +280,17 @@ def speak(text: str):
 def check_mic() -> bool:
     print("🎤 Checking microphone...")
     try:
-        audio = sd.rec(int(SAMPLE_RATE * 1.0), samplerate=SAMPLE_RATE,
-                       channels=1, dtype="float32")
+        audio  = sd.rec(int(SAMPLE_RATE * 1.0), samplerate=SAMPLE_RATE,
+                        channels=1, dtype="float32")
         sd.wait()
         volume = np.sqrt(np.mean(audio**2))
         if volume < MIN_AUDIO_VOLUME:
             print("⚠️  Mic seems very quiet. Check your microphone settings before speaking.")
             logger.warning(f"Mic check failed — volume: {volume:.4f}")
             return False
-        else:
-            print(f"✅ Mic OK (volume: {volume:.4f})")
-            logger.info(f"Mic check passed — volume: {volume:.4f}")
-            return True
+        print(f"✅ Mic OK (volume: {volume:.4f})")
+        logger.info(f"Mic check passed — volume: {volume:.4f}")
+        return True
     except Exception as e:
         logger.error(f"Mic check error: {e}")
         print("⚠️  Could not check microphone. Proceeding anyway.")
@@ -250,10 +328,8 @@ def _idle_loop(mini):
         lambda: mini.goto_target(head=create_head_pose(roll=8, degrees=True), duration=1.5),
         lambda: mini.goto_target(head=create_head_pose(z=5, mm=True), duration=1.5),
         lambda: mini.goto_target(head=create_head_pose(), antennas=[0, 0], duration=1.0),
-        lambda: (
-            mini.goto_target(antennas=[0.15, 0.15], duration=0.8),
-            mini.goto_target(antennas=[0, 0], duration=0.8)
-        ),
+        lambda: (mini.goto_target(antennas=[0.15, 0.15], duration=0.8),
+                 mini.goto_target(antennas=[0, 0], duration=0.8)),
     ]
     while not _idle_stop.is_set():
         try:
@@ -294,15 +370,23 @@ ARTIFACT_TAGS = {
 
 
 def parse_response(raw: str) -> tuple[str, str]:
+    """
+    Parse LLM response into (spoken_text, mood).
+    - Extracts and routes ARTIFACT_*: tags to dashboard (never spoken)
+    - Extracts MOOD: tag
+    - Returns only clean spoken text
+    """
     lines      = raw.strip().split("\n")
     mood       = "neutral"
     text_lines = []
 
     for line in lines:
         stripped = line.strip()
+
         if stripped.startswith("MOOD:"):
             mood = stripped.replace("MOOD:", "").strip().lower()
             continue
+
         matched = False
         for tag, (stage, key, action) in ARTIFACT_TAGS.items():
             if stripped.startswith(f"{tag}:"):
@@ -312,12 +396,15 @@ def parse_response(raw: str) -> tuple[str, str]:
                         ds.set_artifact(stage, key, value)
                     else:
                         ds.append_artifact(stage, key, value)
+                    logger.info(f"Artifact captured [{tag}]: {value}")
                 matched = True
                 break
+
         if not matched:
             text_lines.append(line)
 
-    return " ".join(text_lines).strip(), mood
+    text = " ".join(text_lines).strip()
+    return text, mood
 
 
 # ── LLM ──────────────────────────────────────────────────────────────────────
@@ -356,7 +443,7 @@ def llm_call(system_prompt: str, messages: list) -> str:
 # ── Audio Input ───────────────────────────────────────────────────────────────
 
 def record_audio() -> str:
-    time.sleep(0.5)
+    time.sleep(0.5)  # brief pause to let TTS tail off
     print("🎤 Recording... press Enter again when you're done speaking.")
 
     chunks    = []
@@ -414,40 +501,6 @@ def record_audio() -> str:
             pass
 
 
-# ── Main Chat Turn ────────────────────────────────────────────────────────────
-
-def chat(mini, current_session: dict, past_context: list,
-         user_message: str, current_stage: str) -> None:
-    system_prompt = build_system_prompt(current_stage, BASE_SYSTEM_PROMPT)
-    append_to_session(current_session, "user", user_message)
-    ds.add_transcript_entry("user", user_message, current_stage)
-    messages = past_context + current_session["history"]
-
-    stop_idle()
-    express_mood(mini, "thinking")
-    is_question = user_message.strip().endswith("?")
-    phrases = THINKING_PHRASES_QUESTION if is_question else THINKING_PHRASES_STATEMENT
-    speak(random.choice(phrases))
-
-    try:
-        raw = llm_call(system_prompt, messages)
-    except RuntimeError as e:
-        logger.error(str(e))
-        speak("I'm having trouble thinking right now — could you give me a moment and try again?")
-        start_idle(mini)
-        return
-
-    text, mood = parse_response(raw)
-    logger.info(f"Stage={stage_label(current_stage)} Mood={mood}")
-    print(f"Reachy ({mood}) [{stage_label(current_stage)}]: {text}")
-
-    ds.add_transcript_entry("assistant", text, current_stage)
-    express_mood(mini, mood)
-    speak(text)
-    append_to_session(current_session, "assistant", text)
-    start_idle(mini)
-
-
 # ── Session Summary ───────────────────────────────────────────────────────────
 
 def generate_summary(current_session: dict, current_stage: str) -> str:
@@ -463,6 +516,52 @@ def generate_summary(current_session: dict, current_stage: str) -> str:
         return f"Good work today! We had {exchanges} exchanges in the {stage} stage. Making solid progress."
     else:
         return f"That was a productive session — {exchanges} exchanges and we're well into the {stage} stage. Great work!"
+
+
+# ── Main Chat Turn ────────────────────────────────────────────────────────────
+
+def chat(mini, current_session: dict, past_context: list,
+         user_message: str, current_stage: str) -> None:
+    system_prompt = build_system_prompt(current_stage, BASE_SYSTEM_PROMPT)
+    append_to_session(current_session, "user", user_message)
+    ds.add_transcript_entry("user", user_message, current_stage)
+    messages = past_context + current_session["history"]
+
+    stop_idle()
+    express_mood(mini, "thinking")
+
+    # Context-aware thinking phrase
+    is_question = user_message.strip().endswith("?")
+    phrases     = THINKING_PHRASES_QUESTION if is_question else THINKING_PHRASES_STATEMENT
+    speak(random.choice(phrases))
+
+    try:
+        raw = llm_call(system_prompt, messages)
+    except RuntimeError as e:
+        logger.error(str(e))
+        speak("I'm having trouble thinking right now — could you give me a moment and try again?")
+        start_idle(mini)
+        return
+
+    text, mood = parse_response(raw)
+
+    # Guard against empty LLM response
+    if not text.strip():
+        text = random.choice(EMPTY_RESPONSE_FALLBACKS)
+        logger.warning("LLM returned empty text — using fallback phrase.")
+
+    # Clean markdown and format for natural speech
+    text = clean_for_speech(text)
+
+    logger.info(f"Stage={stage_label(current_stage)} Mood={mood}")
+    print(f"Reachy ({mood}) [{stage_label(current_stage)}]: {text}")
+
+    ds.add_transcript_entry("assistant", text, current_stage)
+    express_mood(mini, mood)
+    speak(text)
+    append_to_session(current_session, "assistant", text)
+
+    start_idle(mini)
 
 
 # ── Session Mode ──────────────────────────────────────────────────────────────
@@ -530,7 +629,6 @@ def main():
     current_session = start_session()
     current_stage   = load_stage_state() or STAGES[0]
 
-    # Start stage timer for the current stage
     ds.set_stage(current_stage)
     ds.set_active(True)
 
@@ -573,7 +671,7 @@ def main():
                     if nxt:
                         current_stage = nxt
                         save_stage(current_stage)
-                        ds.set_stage(current_stage)  # commits old timer, starts new
+                        ds.set_stage(current_stage)
                         logger.info(f"Advancing to stage: {current_stage}")
                         print(f"\n--- Stage: {stage_label(current_stage)} ---\n")
                         greeting = random.choice(STAGE_GREETINGS[current_stage])

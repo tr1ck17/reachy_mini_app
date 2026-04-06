@@ -260,3 +260,17 @@
 2026-04-05 12:10:42,524 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1000000000)
 2026-04-05 12:16:44,428 [ERROR] __main__: TTS/audio playback error: Error opening 'tts_4004763e.wav': Format not recognised.
 2026-04-05 12:17:08,122 [ERROR] __main__: TTS/audio playback error: Error opening 'tts_3e6280e4.wav': Format not recognised.
+2026-04-05 20:13:26,789 [INFO] reachy_mini.reachy_mini: Connection mode selected: localhost_only
+2026-04-05 20:13:27,123 [WARNING] reachy_mini.reachy_mini: Invalid media backend on Lite: default, using default backend.
+2026-04-05 20:13:27,124 [INFO] reachy_mini.media.media_manager: Using GStreamer media backend.
+2026-04-05 20:13:27,124 [INFO] reachy_mini.media.media_manager: Using GStreamer camera backend.
+2026-04-05 20:13:27,272 [INFO] reachy_mini.media.media_manager: Using GStreamer audio backend.
+2026-04-05 20:13:27,298 [ERROR] root: No Reachy Mini Audio USB device found!
+2026-04-05 20:13:27,427 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Source card found.
+2026-04-05 20:13:27,532 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio source.
+2026-04-05 20:13:27,652 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Sink card found.
+2026-04-05 20:13:27,759 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio sink.
+2026-04-05 20:13:32,250 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1000000000)
+2026-04-05 20:17:05,055 [ERROR] __main__: TTS/audio playback error: music_drmp3: corrupt mp3 file (bad tags).
+2026-04-05 20:17:22,622 [ERROR] __main__: TTS/audio playback error: music_drmp3: corrupt mp3 file (bad tags).
+2026-04-05 20:17:35,214 [ERROR] __main__: TTS/audio playback error: music_drmp3: corrupt mp3 file (bad tags).
