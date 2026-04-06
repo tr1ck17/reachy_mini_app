@@ -22,6 +22,9 @@ reachy-mini[mujoco]
 # Web launcher
 flask>=3.0.0
 
+# Audio playback
+pygame>=2.5.0
+
 # Utilities
 numpy>=1.26.0
 setuptools>=75.0.0

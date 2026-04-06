@@ -60,6 +60,8 @@ uv sync
 ```
 This reads `pyproject.toml` and installs everything into a local virtual environment automatically.
 
+> If `pygame` has issues installing via uv, try: `pip install pygame --break-system-packages`
+
 ### Step 3 — Set your Anthropic API key (strongly recommended)
 Copy the example env file and fill in your key:
 ```powershell
