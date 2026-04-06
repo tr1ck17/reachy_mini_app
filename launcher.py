@@ -3,16 +3,19 @@ launcher.py
 Flask server that serves the launcher/dashboard UI and manages
 starting/resetting the Reachy Mini CPS Facilitator app.
 
+Now reads dashboard state from dashboard_state.json (file-based IPC)
+so it works correctly even when reachy_chat.py runs as a separate process.
+
 Endpoints:
   GET  /                    → serves index.html (launcher + dashboard)
   GET  /history             → conversation history viewer
   GET  /api/session-info    → returns previous session info
   POST /api/launch          → launches reachy_chat.py
-  POST /api/clear-history   → deletes all memory, stage, session ID, and transcripts
-  GET  /api/transcripts     → returns list of all transcript files with metadata
-  GET  /api/transcript/<id> → returns full content of a specific transcript
+  POST /api/clear-history   → deletes all history files
+  GET  /api/transcripts     → returns list of all transcript files
+  GET  /api/transcript/<id> → returns content of a specific transcript
   GET  /api/state           → returns full dashboard state
-  GET  /api/poll?since=N    → long-poll: blocks until version > N, then returns state
+  GET  /api/poll?since=N    → long-poll until version > N
 """
 
 import glob
@@ -80,70 +83,50 @@ def get_session_info() -> dict:
 
 
 def get_transcripts() -> list:
-    """
-    Return a list of all transcript files with metadata.
-    Each entry has: id, filename, started, sessions, exchange_count, preview.
-    """
     transcripts = []
     if not os.path.exists(SESSIONS_DIR):
         return transcripts
-
     for filepath in sorted(glob.glob(os.path.join(SESSIONS_DIR, "*.md")), reverse=True):
         try:
             with open(filepath, "r", encoding="utf-8") as f:
                 content = f.read()
-
-            filename = os.path.basename(filepath)
-            file_id  = filename.replace(".md", "")
-
-            # Extract started date
-            started_match = re.search(r"\*\*Started:\*\* (.+)", content)
-            started = started_match.group(1).strip() if started_match else "Unknown"
-
-            # Count sessions (## Session markers)
-            session_count = len(re.findall(r"^## Session", content, re.MULTILINE))
-            if session_count == 0:
-                session_count = 1  # old format files
-
-            # Count exchanges
-            exchange_count = len(re.findall(r"^\*\*You\*\*:", content, re.MULTILINE))
-
-            # First user message as preview
-            preview_match = re.search(r"\*\*You\*\*: (.+?)(?:\n|$)", content)
-            preview = preview_match.group(1).strip()[:120] if preview_match else "No content"
+            filename    = os.path.basename(filepath)
+            file_id     = filename.replace(".md", "")
+            started_m   = re.search(r"\*\*Started:\*\* (.+)", content)
+            started     = started_m.group(1).strip() if started_m else "Unknown"
+            sess_count  = len(re.findall(r"^## Session", content, re.MULTILINE)) or 1
+            exch_count  = len(re.findall(r"^\*\*You\*\*:", content, re.MULTILINE))
+            prev_m      = re.search(r"\*\*You\*\*: (.+?)(?:\n|$)", content)
+            preview     = prev_m.group(1).strip()[:120] if prev_m else "No content"
             if len(preview) == 120:
                 preview += "..."
-
             transcripts.append({
                 "id":             file_id,
                 "filename":       filename,
                 "started":        started,
-                "session_count":  session_count,
-                "exchange_count": exchange_count,
+                "session_count":  sess_count,
+                "exchange_count": exch_count,
                 "preview":        preview,
             })
         except Exception as e:
             logger.error(f"Could not read transcript {filepath}: {e}")
-
     return transcripts
 
 
-def get_transcript_content(file_id: str) -> str | None:
-    """Return the full markdown content of a transcript by ID."""
+def get_transcript_content(file_id: str):
     filepath = os.path.join(SESSIONS_DIR, f"{file_id}.md")
     if not os.path.exists(filepath):
         return None
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             return f.read()
-    except IOError as e:
-        logger.error(f"Could not read transcript {filepath}: {e}")
+    except IOError:
         return None
 
 
-def clear_session_files():
+def clear_all_files():
     deleted = []
-    for filepath in [MEMORY_FILE, STAGE_FILE, SESSION_FILE]:
+    for filepath in [MEMORY_FILE, STAGE_FILE, SESSION_FILE, ds.STATE_FILE]:
         if os.path.exists(filepath):
             try:
                 os.remove(filepath)
@@ -162,7 +145,7 @@ def clear_session_files():
 
 
 def clear_session_state_only():
-    for filepath in [MEMORY_FILE, STAGE_FILE, SESSION_FILE]:
+    for filepath in [MEMORY_FILE, STAGE_FILE, SESSION_FILE, ds.STATE_FILE]:
         if os.path.exists(filepath):
             try:
                 os.remove(filepath)
@@ -173,7 +156,7 @@ def clear_session_state_only():
 
 def launch_reachy(mode: str) -> bool:
     python = sys.executable
-    script = os.path.join(os.path.dirname(__file__), REACHY_SCRIPT)
+    script = os.path.join(os.path.dirname(os.path.abspath(__file__)), REACHY_SCRIPT)
     if not os.path.exists(script):
         logger.error(f"Script not found: {script}")
         return False
@@ -183,11 +166,10 @@ def launch_reachy(mode: str) -> bool:
         subprocess.Popen(
             ["start", "cmd", "/k", python, script],
             shell=True,
-            cwd=os.path.dirname(__file__),
+            cwd=os.path.dirname(os.path.abspath(__file__)),
             env=env
         )
         logger.info(f"Launched {REACHY_SCRIPT} (mode={mode}).")
-        ds.set_active(True)
         return True
     except Exception as e:
         logger.error(f"Failed to launch {REACHY_SCRIPT}: {e}")
@@ -218,7 +200,6 @@ def transcripts():
 
 @app.route("/api/transcript/<file_id>")
 def transcript(file_id: str):
-    # Sanitize ID to prevent path traversal
     safe_id = re.sub(r"[^\w\-]", "", file_id)
     content = get_transcript_content(safe_id)
     if content is None:
@@ -240,26 +221,33 @@ def launch():
 
 @app.route("/api/clear-history", methods=["POST"])
 def clear_history():
-    count = clear_session_files()
+    count = clear_all_files()
     return jsonify({"status": "cleared", "files_deleted": count})
 
 
 @app.route("/api/state")
 def get_state():
+    """Return full dashboard state from file."""
     return jsonify(ds.get_state())
 
 
 @app.route("/api/poll")
 def poll():
+    """
+    Long-poll endpoint. Reads from dashboard_state.json which is written
+    by reachy_chat.py — works across separate processes.
+    """
     try:
         since = int(request.args.get("since", -1))
     except (ValueError, TypeError):
         since = -1
+
     deadline = time.time() + POLL_TIMEOUT
     while time.time() < deadline:
         if ds.get_version() > since:
             return jsonify(ds.get_state())
-        time.sleep(0.2)
+        time.sleep(0.3)
+
     return jsonify(ds.get_state())
 
 

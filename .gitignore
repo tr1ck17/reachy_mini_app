@@ -28,3 +28,5 @@ sessions/
 session_id.json
 
 .env
+
+dashboard_state.json
