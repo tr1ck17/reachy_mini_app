@@ -439,7 +439,7 @@
       updateTranscript(state.transcript);
       updateArtifacts(state.artifacts);
       updateStats(state.transcript, state.artifacts);
-      updateStageTimers(state.stage_timers, state.stage);
+      updateStageTimers(state);
     }
 
     function showDashboard() {
@@ -572,12 +572,42 @@
 
     // ── Stats ─────────────────────────────────────────────────────────────────
 
-    function updateStats(transcript, artifacts) {
-      document.getElementById('statExchanges').textContent = transcript?.length || 0;
-      document.getElementById('statIdeas').textContent     = artifacts?.ideate?.ideas?.length || 0;
-      document.getElementById('statActions').textContent   = artifacts?.develop?.action_steps?.length || 0;
-    }
+function updateStats(transcript, artifacts) {
+  document.getElementById('statExchanges').textContent = transcript?.length || 0;
+  document.getElementById('statIdeas').textContent     = artifacts?.ideate?.ideas?.length || 0;
+  document.getElementById('statActions').textContent   = artifacts?.develop?.action_steps?.length || 0;
+}
 
+function formatTime(seconds) {
+  if (seconds === null || seconds === undefined) return '—';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+let _stageStartedAt = null;
+let _timerInterval  = null;
+
+function updateStageTimes(state) {
+  const times = state.stage_times || {};
+  document.getElementById('timeClarify').textContent   = formatTime(times.clarify);
+  document.getElementById('timeIdeate').textContent    = formatTime(times.ideate);
+  document.getElementById('timeDevelop').textContent   = formatTime(times.develop);
+  document.getElementById('timeImplement').textContent = formatTime(times.implement);
+
+  // Live current stage timer
+  const startedAt = state.stage_started_at;
+  if (startedAt !== _stageStartedAt) {
+    _stageStartedAt = startedAt;
+    if (_timerInterval) clearInterval(_timerInterval);
+    if (startedAt) {
+      _timerInterval = setInterval(() => {
+        const elapsed = (Date.now() / 1000) - startedAt;
+        document.getElementById('timeCurrent').textContent = formatTime(elapsed);
+      }, 1000);
+    }
+  }
+}
     // ── Utilities ─────────────────────────────────────────────────────────────
 
     function escapeHtml(text) {
