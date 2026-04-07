@@ -22,6 +22,7 @@ Fixes applied:
 - Numbered list with natural pauses instead of bullet run-ons
 - pygame MP3 playback for cross-platform TTS compatibility
 - Context-aware thinking phrases (question vs statement)
+- Consent check on startup — Reachy asks if user is ready before CPS begins
 """
 
 import asyncio
@@ -140,6 +141,19 @@ STAGE_GREETINGS = {
     ],
 }
 
+# Phrases that count as "yes" for the consent check
+CONSENT_YES = [
+    "yes", "yeah", "yep", "yup", "sure", "ready", "let's go", "lets go",
+    "absolutely", "definitely", "of course", "go ahead", "start", "begin",
+    "i'm ready", "im ready", "let's begin", "lets begin",
+]
+
+# Phrases that count as "no" for the consent check
+CONSENT_NO = [
+    "no", "nope", "not yet", "not now", "wait", "later", "hold on",
+    "give me a minute", "give me a second", "not ready",
+]
+
 BASE_SYSTEM_PROMPT = """You are Reachy Mini, a friendly, curious, and expressive small robot companion
 and Creative Problem Solving facilitator. You speak in short, warm, conversational sentences.
 Keep responses to 1-3 sentences unless you need more to facilitate effectively.
@@ -185,26 +199,13 @@ except Exception as e:
 # ── Text Cleaning for Speech ──────────────────────────────────────────────────
 
 def clean_for_speech(text: str) -> str:
-    """
-    Clean LLM response text for natural speech output.
-    - Strips markdown formatting (bold, italic, headers)
-    - Converts bullet points to numbered items with natural pauses
-    - Removes any artifact tags that slipped through parsing
-    - Cleans up extra whitespace
-    """
-    # Remove any artifact tags that slipped through
     text = re.sub(r'ARTIFACT_\w+:.*', '', text)
-
-    # Remove markdown headers
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-
-    # Remove bold and italic
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
     text = re.sub(r'\*(.+?)\*', r'\1', text)
     text = re.sub(r'__(.+?)__', r'\1', text)
     text = re.sub(r'_(.+?)_', r'\1', text)
 
-    # Convert bullet points to numbered items
     lines   = text.split('\n')
     cleaned = []
     counter = 1
@@ -221,32 +222,22 @@ def clean_for_speech(text: str) -> str:
             if cleaned and not cleaned[-1].endswith('.'):
                 cleaned[-1] += '.'
             cleaned.append(stripped)
-            counter = 1  # reset numbering for new section
+            counter = 1
 
-    # Join with a pause — period creates natural TTS breath
     result = ' '.join(cleaned)
-
-    # Clean up double periods and extra spaces
     result = re.sub(r'\.\.+', '.', result)
     result = re.sub(r'\s+', ' ', result).strip()
-
     return result
 
 
 # ── TTS ───────────────────────────────────────────────────────────────────────
 
 async def _speak_async(text: str, filepath: str):
-    """Generate TTS audio and save as MP3."""
     communicate = edge_tts.Communicate(text, voice=VOICE)
     await communicate.save(filepath)
 
 
 def speak(text: str):
-    """
-    Convert text to speech and play it via pygame.
-    Uses MP3 format for cross-platform compatibility.
-    Falls back to printing if audio fails.
-    """
     if not text or not text.strip():
         logger.warning("speak() called with empty text — skipping.")
         return
@@ -255,7 +246,6 @@ def speak(text: str):
     try:
         asyncio.run(_speak_async(text, filepath))
 
-        # Verify file was written properly
         if not os.path.exists(filepath) or os.path.getsize(filepath) < 500:
             logger.warning("TTS file too small or missing — skipping playback.")
             print(f"[Reachy would say]: {text}")
@@ -344,12 +334,6 @@ ARTIFACT_TAGS = {
 
 
 def parse_response(raw: str) -> tuple[str, str]:
-    """
-    Parse LLM response into (spoken_text, mood).
-    - Extracts and routes ARTIFACT_*: tags to dashboard (never spoken)
-    - Extracts MOOD: tag
-    - Returns only clean spoken text
-    """
     lines      = raw.strip().split("\n")
     mood       = "neutral"
     text_lines = []
@@ -417,7 +401,7 @@ def llm_call(system_prompt: str, messages: list) -> str:
 # ── Audio Input ───────────────────────────────────────────────────────────────
 
 def record_audio() -> str:
-    time.sleep(0.5)  # brief pause to let TTS tail off
+    time.sleep(0.5)
     print("🎤 Recording... press Enter again when you're done speaking.")
 
     chunks    = []
@@ -475,6 +459,42 @@ def record_audio() -> str:
             pass
 
 
+# ── Consent Check ─────────────────────────────────────────────────────────────
+
+def consent_check(mini) -> bool:
+    """
+    Wait for user to press Enter, ask if they're ready to begin CPS.
+    Returns True if yes, False if no.
+    Loops back if the response is unclear.
+    """
+    while True:
+        try:
+            input("\nPress Enter to begin the CPS process with Reachy Mini: ")
+        except (EOFError, KeyboardInterrupt):
+            return False
+
+        speak("Hey! Are you ready to begin the Creative Problem Solving process?")
+
+        do_listening_pose(mini)
+        user_input = record_audio()
+
+        if not user_input:
+            speak("I didn't catch that — just say yes or no.")
+            continue
+
+        lowered = user_input.lower().strip()
+
+        if any(w in lowered for w in CONSENT_YES):
+            logger.info("Consent check: user said yes.")
+            return True
+        elif any(w in lowered for w in CONSENT_NO):
+            logger.info("Consent check: user said no.")
+            speak("No problem — I'll be right here whenever you're ready.")
+            return False
+        else:
+            speak("I didn't quite catch that — just say yes if you're ready, or no if you'd like to wait.")
+
+
 # ── Session Summary ───────────────────────────────────────────────────────────
 
 def generate_summary(current_session: dict, current_stage: str) -> str:
@@ -503,7 +523,6 @@ def chat(mini, current_session: dict, past_context: list,
 
     stop_idle()
 
-    # Thinking pose + phrase while LLM generates
     is_question = user_message.strip().endswith("?")
     do_thinking_pose(mini, is_question)
     phrases = THINKING_PHRASES_QUESTION if is_question else THINKING_PHRASES_STATEMENT
@@ -519,12 +538,10 @@ def chat(mini, current_session: dict, past_context: list,
 
     text, mood = parse_response(raw)
 
-    # Guard against empty LLM response
     if not text.strip():
         text = random.choice(EMPTY_RESPONSE_FALLBACKS)
         logger.warning("LLM returned empty text — using fallback phrase.")
 
-    # Clean markdown and format for natural speech
     text = clean_for_speech(text)
 
     logger.info(f"Stage={stage_label(current_stage)} Mood={mood}")
@@ -532,10 +549,8 @@ def chat(mini, current_session: dict, past_context: list,
 
     ds.add_transcript_entry("assistant", text, current_stage)
 
-    # Mood reaction before speaking
     do_mood_reaction(mini, mood)
 
-    # Talking animation runs while Reachy speaks
     talk_stop   = threading.Event()
     talk_thread = threading.Thread(
         target=talking_animation, args=(mini, talk_stop), daemon=True
@@ -630,9 +645,18 @@ def main():
     try:
         with ReachyMini() as mini:
             logger.info("Connected to Reachy Mini.")
-            speak("Hey there! I'm here whenever you're ready to talk. What's on your mind?")
             start_idle(mini)
 
+            # ── Consent check loop ────────────────────────────────────────────
+            # Keep looping until user says yes or exits
+            while True:
+                ready = consent_check(mini)
+                if ready:
+                    speak(random.choice(STAGE_GREETINGS[current_stage]))
+                    break
+                # If no — loop back to "Press Enter to begin"
+
+            # ── Main conversation loop ────────────────────────────────────────
             while True:
                 try:
                     cmd = input("\nPress Enter to speak (or type 'quit'): ").strip().lower()
