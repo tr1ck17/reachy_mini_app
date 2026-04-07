@@ -21,13 +21,21 @@ logger = logging.getLogger(__name__)
 STATE_FILE = "dashboard_state.json"
 _lock      = threading.Lock()
 
+
 # ── Default State ─────────────────────────────────────────────────────────────
 
 def _default_state() -> dict:
     return {
-        "version":    0,
-        "active":     False,
-        "stage":      "clarify",
+        "version":          0,
+        "active":           False,
+        "stage":            "clarify",
+        "stage_started_at": None,      # unix timestamp when current stage began
+        "stage_times": {               # seconds spent in each completed stage
+            "clarify":   None,
+            "ideate":    None,
+            "develop":   None,
+            "implement": None,
+        },
         "transcript": [],
         "artifacts": {
             "clarify": {
@@ -101,14 +109,36 @@ def set_active(active: bool):
     with _lock:
         state = _read()
         state["active"] = active
+        if not active:
+            # Record final stage time on shutdown
+            _record_stage_time(state)
         _write(_bump(state))
 
 
 def set_stage(stage: str):
+    """Advance to a new stage — records time spent in previous stage."""
     with _lock:
         state = _read()
-        state["stage"] = stage
+        # Record time spent in the previous stage
+        _record_stage_time(state)
+        # Start timer for new stage
+        state["stage"]            = stage
+        state["stage_started_at"] = time.time()
         _write(_bump(state))
+
+
+def _record_stage_time(state: dict):
+    """
+    Calculate and store elapsed time for the current stage.
+    Called when transitioning to a new stage or on shutdown.
+    """
+    started_at = state.get("stage_started_at")
+    current    = state.get("stage")
+    if started_at and current:
+        elapsed = time.time() - started_at
+        if "stage_times" not in state:
+            state["stage_times"] = {"clarify": None, "ideate": None, "develop": None, "implement": None}
+        state["stage_times"][current] = round(elapsed)
 
 
 def add_transcript_entry(role: str, text: str, stage: str):

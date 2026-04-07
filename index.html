@@ -116,18 +116,14 @@
     /* ══ DIALOG ══ */
     .dialog-overlay { display: none; position: fixed; inset: 0; z-index: 100; background: rgba(8,8,16,0.85); backdrop-filter: blur(4px); align-items: center; justify-content: center; }
     .dialog-overlay.visible { display: flex; }
-
     .dialog { background: var(--surface); border: 1px solid var(--border); border-radius: 20px; padding: 2rem; width: 100%; max-width: 400px; display: flex; flex-direction: column; gap: 1.25rem; animation: dialogIn 0.2s ease; }
     @keyframes dialogIn { from { opacity: 0; transform: scale(0.95) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
-
     .dialog-icon { font-size: 2.5rem; text-align: center; }
     .dialog-title { font-family: 'Instrument Serif', serif; font-size: 1.4rem; font-weight: 400; text-align: center; color: var(--text); }
     .dialog-body { font-size: 0.85rem; color: var(--muted); text-align: center; line-height: 1.6; }
     .dialog-body strong { color: var(--rose); }
-
     .dialog-checkbox { display: flex; align-items: center; gap: 0.6rem; justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--muted); cursor: pointer; }
     .dialog-checkbox input { accent-color: var(--accent); width: 14px; height: 14px; cursor: pointer; }
-
     .dialog-btns { display: flex; gap: 0.75rem; }
     .dialog-btn { flex: 1; padding: 0.75rem; border-radius: 10px; border: none; font-family: 'Bricolage Grotesque', sans-serif; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
     .dialog-btn-cancel { background: transparent; color: var(--muted); border: 1px solid var(--border); }
@@ -142,7 +138,6 @@
     .topbar { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; padding: 0 1.5rem; background: var(--surface); border-bottom: 1px solid var(--border); }
     .topbar-left { display: flex; align-items: center; gap: 1rem; }
     .topbar-title { font-family: 'Instrument Serif', serif; font-size: 1.2rem; font-weight: 400; }
-
     .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s ease-in-out infinite; }
     @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
 
@@ -304,9 +299,7 @@
       </div>
       <div class="stage-card">
         <p class="stage-card-title">Time Per Stage</p>
-        <div id="stageTimers">
-          <!-- populated by JS -->
-        </div>
+        <div id="stageTimers"><!-- populated by JS --></div>
       </div>
       <div class="stage-card">
         <p class="stage-card-title">Session Stats</p>
@@ -329,7 +322,10 @@
     let currentVersion    = -1;
     let polling           = false;
     let lastTranscriptLen = 0;
-    let currentStage      = "clarify";
+
+    // ── Live current-stage ticker ─────────────────────────────────────────────
+    let _stageStartedAt = null;
+    let _tickInterval   = null;
 
     // ── Launcher ──────────────────────────────────────────────────────────────
 
@@ -340,7 +336,6 @@
         const el   = document.getElementById('sessionInfo');
         const btn  = document.getElementById('btnContinue');
         const clr  = document.getElementById('btnClear');
-
         if (data.has_previous) {
           el.innerHTML = `
             <div class="session-row"><span class="sk">Last active</span><span class="sv">${data.last_session}</span></div>
@@ -432,20 +427,20 @@
     // ── Apply State ───────────────────────────────────────────────────────────
 
     function applyState(state) {
-      if (state.active && !document.getElementById('dashboard').classList.contains('visible')) showDashboard();
-      currentStage = state.stage;
+      if (state.active && !document.getElementById('dashboard').classList.contains('visible')) {
+        showDashboard();
+      }
       updateStageProgress(state.stage);
       updateStageDescription(state.stage);
       updateTranscript(state.transcript);
       updateArtifacts(state.artifacts);
       updateStats(state.transcript, state.artifacts);
-      updateStageTimers(state);
+      updateStageTimers(state.stage_times || {}, state.stage, state.stage_started_at);
     }
 
     function showDashboard() {
       document.getElementById('launcher').style.display = 'none';
       document.getElementById('dashboard').classList.add('visible');
-      // Initialize timer display
       renderTimerBars();
     }
 
@@ -473,7 +468,7 @@
         <div class="timer-row">
           <div class="timer-label-row">
             <span class="timer-stage-name" id="timer-name-${s}">${STAGE_INFO[s].label}</span>
-            <span class="timer-value" id="timer-val-${s}">0:00</span>
+            <span class="timer-value" id="timer-val-${s}">—</span>
           </div>
           <div class="timer-bar-track">
             <div class="timer-bar-fill" id="timer-bar-${s}" style="width:0%"></div>
@@ -483,34 +478,61 @@
     }
 
     function formatTime(seconds) {
+      if (seconds === null || seconds === undefined) return '—';
       const m = Math.floor(seconds / 60);
       const s = Math.floor(seconds % 60);
       return `${m}:${s.toString().padStart(2, '0')}`;
     }
 
-    function updateStageTimers(timers, activeStage) {
-      if (!timers) return;
-
-      // Total time across all stages for bar scaling
-      const total = Object.values(timers).reduce((a, b) => a + b, 0);
+    function updateStageTimers(stageTimes, activeStage, stageStartedAt) {
+      // Update completed stage times and bars
+      const completedTimes = Object.values(stageTimes).filter(v => v !== null);
+      const maxTime = completedTimes.length > 0 ? Math.max(...completedTimes, 60) : 60;
 
       STAGES.forEach(s => {
-        const secs    = timers[s] || 0;
-        const valEl   = document.getElementById(`timer-val-${s}`);
-        const barEl   = document.getElementById(`timer-bar-${s}`);
-        const nameEl  = document.getElementById(`timer-name-${s}`);
+        const valEl  = document.getElementById(`timer-val-${s}`);
+        const barEl  = document.getElementById(`timer-bar-${s}`);
+        const nameEl = document.getElementById(`timer-name-${s}`);
         if (!valEl || !barEl || !nameEl) return;
 
-        valEl.textContent = formatTime(secs);
+        const idx      = STAGES.indexOf(activeStage);
+        const stageIdx = STAGES.indexOf(s);
+        const isDone   = stageIdx < idx;
+        const isActive = s === activeStage;
 
-        const pct = total > 0 ? Math.min((secs / total) * 100, 100) : 0;
-        barEl.style.width = `${pct}%`;
-
-        const idx         = STAGES.indexOf(activeStage);
-        const stageIdx    = STAGES.indexOf(s);
-        barEl.className   = `timer-bar-fill${stageIdx === idx ? ' active' : stageIdx < idx ? ' done' : ''}`;
-        nameEl.className  = `timer-stage-name${s === activeStage ? ' active' : ''}`;
+        if (isDone && stageTimes[s] !== null) {
+          valEl.textContent  = formatTime(stageTimes[s]);
+          barEl.style.width  = `${Math.min((stageTimes[s] / maxTime) * 100, 100)}%`;
+          barEl.className    = 'timer-bar-fill done';
+          nameEl.className   = 'timer-stage-name';
+        } else if (isActive) {
+          barEl.className    = 'timer-bar-fill active';
+          nameEl.className   = 'timer-stage-name active';
+          // bar width for active stage — will tick via interval
+        } else {
+          valEl.textContent  = '—';
+          barEl.style.width  = '0%';
+          barEl.className    = 'timer-bar-fill';
+          nameEl.className   = 'timer-stage-name';
+        }
       });
+
+      // Manage live tick for active stage
+      if (stageStartedAt !== _stageStartedAt) {
+        _stageStartedAt = stageStartedAt;
+        if (_tickInterval) clearInterval(_tickInterval);
+        if (stageStartedAt) {
+          const tick = () => {
+            const elapsed = (Date.now() / 1000) - stageStartedAt;
+            const valEl   = document.getElementById(`timer-val-${activeStage}`);
+            const barEl   = document.getElementById(`timer-bar-${activeStage}`);
+            if (valEl) valEl.textContent = formatTime(elapsed);
+            if (barEl) barEl.style.width = `${Math.min((elapsed / Math.max(elapsed, 300)) * 100, 95)}%`;
+          };
+          tick();
+          _tickInterval = setInterval(tick, 1000);
+        }
+      }
     }
 
     // ── Transcript ────────────────────────────────────────────────────────────
@@ -572,42 +594,12 @@
 
     // ── Stats ─────────────────────────────────────────────────────────────────
 
-function updateStats(transcript, artifacts) {
-  document.getElementById('statExchanges').textContent = transcript?.length || 0;
-  document.getElementById('statIdeas').textContent     = artifacts?.ideate?.ideas?.length || 0;
-  document.getElementById('statActions').textContent   = artifacts?.develop?.action_steps?.length || 0;
-}
-
-function formatTime(seconds) {
-  if (seconds === null || seconds === undefined) return '—';
-  const m = Math.floor(seconds / 60);
-  const s = Math.floor(seconds % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
-
-let _stageStartedAt = null;
-let _timerInterval  = null;
-
-function updateStageTimes(state) {
-  const times = state.stage_times || {};
-  document.getElementById('timeClarify').textContent   = formatTime(times.clarify);
-  document.getElementById('timeIdeate').textContent    = formatTime(times.ideate);
-  document.getElementById('timeDevelop').textContent   = formatTime(times.develop);
-  document.getElementById('timeImplement').textContent = formatTime(times.implement);
-
-  // Live current stage timer
-  const startedAt = state.stage_started_at;
-  if (startedAt !== _stageStartedAt) {
-    _stageStartedAt = startedAt;
-    if (_timerInterval) clearInterval(_timerInterval);
-    if (startedAt) {
-      _timerInterval = setInterval(() => {
-        const elapsed = (Date.now() / 1000) - startedAt;
-        document.getElementById('timeCurrent').textContent = formatTime(elapsed);
-      }, 1000);
+    function updateStats(transcript, artifacts) {
+      document.getElementById('statExchanges').textContent = transcript?.length || 0;
+      document.getElementById('statIdeas').textContent     = artifacts?.ideate?.ideas?.length || 0;
+      document.getElementById('statActions').textContent   = artifacts?.develop?.action_steps?.length || 0;
     }
-  }
-}
+
     // ── Utilities ─────────────────────────────────────────────────────────────
 
     function escapeHtml(text) {
