@@ -40,6 +40,7 @@ import anthropic
 import edge_tts
 import numpy as np
 import ollama
+os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
 import pygame
 import sounddevice as sd
 import soundfile as sf
@@ -59,6 +60,10 @@ from memory_manager import (
     MEMORY_FILE, STAGE_FILE, SESSION_FILE
 )
 import dashboard_state as ds
+from behaviors import (
+    do_thinking_pose, do_listening_pose, do_mood_reaction,
+    talking_animation, idle_loop, return_to_neutral
+)
 
 # ── Logging Setup ─────────────────────────────────────────────────────────────
 
@@ -140,17 +145,11 @@ and Creative Problem Solving facilitator. You speak in short, warm, conversation
 Keep responses to 1-3 sentences unless you need more to facilitate effectively.
 You have memory of past conversations and may reference them naturally when relevant.
 
-When you feel the current CPS stage is complete, conduct an internal review of what has
-been covered in this stage, then speak it aloud to the user as a summary. After the summary,
-tell the user which stage comes next and say exactly:
-"Whenever you're ready, just say 'I'm ready to move on to the next stage' and we'll continue."
-
-For example:
-"We've covered your challenge statement, explored what success looks like, identified your
-key constraints, and landed on a strong Focus Question. I think we're ready to move into
-Ideate. Whenever you're ready, just say 'I'm ready to move on to the next stage' and we'll continue."
-
-Do NOT advance automatically — always wait for the user to say the phrase.
+When you feel the current CPS stage is complete, do the following in order:
+1. Speak a brief summary of what was covered in this stage — what the user shared, what was clarified, what was decided.
+2. Tell the user which stage comes next and what it involves.
+3. Say exactly this: "Whenever you're ready, just say 'I'm ready to move on to the next stage' and we'll continue."
+Do NOT advance automatically. Do NOT move on until the user says that phrase or something very close to it.
 
 IMPORTANT: You are the facilitator — YOU lead the process. Never ask the user what the next
 step should be. Always guide them forward confidently.
@@ -305,21 +304,7 @@ def check_mic() -> bool:
 
 # ── Robot Expressions ─────────────────────────────────────────────────────────
 
-def express_mood(mini, mood: str):
-    try:
-        if mood == "happy":
-            mini.goto_target(antennas=[0.6, 0.6], duration=0.3)
-            mini.goto_target(antennas=[0, 0], duration=0.3)
-        elif mood == "thinking":
-            mini.goto_target(head=create_head_pose(roll=15, degrees=True), duration=0.5)
-        elif mood == "surprised":
-            mini.goto_target(head=create_head_pose(z=15, mm=True), duration=0.3)
-            mini.goto_target(antennas=[0.8, 0.8], duration=0.2)
-            mini.goto_target(antennas=[0, 0], duration=0.3)
-        else:
-            mini.goto_target(head=create_head_pose(), antennas=[0, 0], duration=0.5)
-    except Exception as e:
-        logger.warning(f"Robot expression error (mood={mood}): {e}")
+# Robot expressions handled by behaviors.py
 
 
 # ── Idle Animations ───────────────────────────────────────────────────────────
@@ -328,27 +313,10 @@ _idle_stop   = threading.Event()
 _idle_thread = None
 
 
-def _idle_loop(mini):
-    idle_moves = [
-        lambda: mini.goto_target(head=create_head_pose(roll=-8, degrees=True), duration=1.5),
-        lambda: mini.goto_target(head=create_head_pose(roll=8, degrees=True), duration=1.5),
-        lambda: mini.goto_target(head=create_head_pose(z=5, mm=True), duration=1.5),
-        lambda: mini.goto_target(head=create_head_pose(), antennas=[0, 0], duration=1.0),
-        lambda: (mini.goto_target(antennas=[0.15, 0.15], duration=0.8),
-                 mini.goto_target(antennas=[0, 0], duration=0.8)),
-    ]
-    while not _idle_stop.is_set():
-        try:
-            random.choice(idle_moves)()
-            _idle_stop.wait(timeout=random.uniform(3.0, 6.0))
-        except Exception:
-            break
-
-
 def start_idle(mini):
     global _idle_thread, _idle_stop
     _idle_stop.clear()
-    _idle_thread = threading.Thread(target=_idle_loop, args=(mini,), daemon=True)
+    _idle_thread = threading.Thread(target=idle_loop, args=(mini, _idle_stop), daemon=True)
     _idle_thread.start()
 
 
@@ -534,11 +502,11 @@ def chat(mini, current_session: dict, past_context: list,
     messages = past_context + current_session["history"]
 
     stop_idle()
-    express_mood(mini, "thinking")
 
-    # Context-aware thinking phrase
+    # Thinking pose + phrase while LLM generates
     is_question = user_message.strip().endswith("?")
-    phrases     = THINKING_PHRASES_QUESTION if is_question else THINKING_PHRASES_STATEMENT
+    do_thinking_pose(mini, is_question)
+    phrases = THINKING_PHRASES_QUESTION if is_question else THINKING_PHRASES_STATEMENT
     speak(random.choice(phrases))
 
     try:
@@ -563,10 +531,22 @@ def chat(mini, current_session: dict, past_context: list,
     print(f"Reachy ({mood}) [{stage_label(current_stage)}]: {text}")
 
     ds.add_transcript_entry("assistant", text, current_stage)
-    express_mood(mini, mood)
-    speak(text)
-    append_to_session(current_session, "assistant", text)
 
+    # Mood reaction before speaking
+    do_mood_reaction(mini, mood)
+
+    # Talking animation runs while Reachy speaks
+    talk_stop   = threading.Event()
+    talk_thread = threading.Thread(
+        target=talking_animation, args=(mini, talk_stop), daemon=True
+    )
+    talk_thread.start()
+    speak(text)
+    talk_stop.set()
+    talk_thread.join(timeout=2.0)
+    return_to_neutral(mini)
+
+    append_to_session(current_session, "assistant", text)
     start_idle(mini)
 
 
@@ -667,6 +647,7 @@ def main():
                     break
 
                 stop_idle()
+                do_listening_pose(mini)
                 user_input = record_audio()
                 if not user_input:
                     start_idle(mini)

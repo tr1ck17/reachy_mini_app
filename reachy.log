@@ -341,3 +341,14 @@
 2026-04-06 17:36:39,389 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Sink card found.
 2026-04-06 17:36:39,818 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio sink.
 2026-04-06 17:36:42,532 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1000000000)
+2026-04-06 23:08:34,286 [INFO] reachy_mini.reachy_mini: Connection mode selected: localhost_only
+2026-04-06 23:08:34,839 [WARNING] reachy_mini.reachy_mini: Invalid media backend on Lite: default, using default backend.
+2026-04-06 23:08:34,840 [INFO] reachy_mini.media.media_manager: Using GStreamer media backend.
+2026-04-06 23:08:34,840 [INFO] reachy_mini.media.media_manager: Using GStreamer camera backend.
+2026-04-06 23:09:07,398 [INFO] reachy_mini.media.media_manager: Using GStreamer audio backend.
+2026-04-06 23:09:07,527 [ERROR] root: No Reachy Mini Audio USB device found!
+2026-04-06 23:09:08,273 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Source card found.
+2026-04-06 23:09:08,740 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio source.
+2026-04-06 23:09:09,299 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Sink card found.
+2026-04-06 23:09:09,766 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio sink.
+2026-04-06 23:09:12,532 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1000000000)
