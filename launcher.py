@@ -3,19 +3,19 @@ launcher.py
 Flask server that serves the launcher/dashboard UI and manages
 starting/resetting the Reachy Mini CPS Facilitator app.
 
-Now reads dashboard state from dashboard_state.json (file-based IPC)
-so it works correctly even when reachy_chat.py runs as a separate process.
+On startup, resets the dashboard active state so the browser
+always opens to the home/launcher page regardless of previous session.
 
 Endpoints:
-  GET  /                    → serves index.html (launcher + dashboard)
-  GET  /history             → conversation history viewer
-  GET  /api/session-info    → returns previous session info
-  POST /api/launch          → launches reachy_chat.py
-  POST /api/clear-history   → deletes all history files
-  GET  /api/transcripts     → returns list of all transcript files
-  GET  /api/transcript/<id> → returns content of a specific transcript
-  GET  /api/state           → returns full dashboard state
-  GET  /api/poll?since=N    → long-poll until version > N
+  GET  /                    -> serves index.html (launcher + dashboard)
+  GET  /history             -> conversation history viewer
+  GET  /api/session-info    -> returns previous session info
+  POST /api/launch          -> launches reachy_chat.py
+  POST /api/clear-history   -> deletes all history files
+  GET  /api/transcripts     -> returns list of all transcript files
+  GET  /api/transcript/<id> -> returns content of a specific transcript
+  GET  /api/state           -> returns full dashboard state
+  GET  /api/poll?since=N    -> long-poll until version > N
 """
 
 import glob
@@ -96,8 +96,8 @@ def get_transcripts() -> list:
             started     = started_m.group(1).strip() if started_m else "Unknown"
             sess_count  = len(re.findall(r"^## Session", content, re.MULTILINE)) or 1
             exch_count  = len(re.findall(r"^\*\*You\*\*:", content, re.MULTILINE))
-            prev_m      = re.search(r"\*\*You\*\*: (.+?)(?:\n|$)", content)
-            preview     = prev_m.group(1).strip()[:120] if prev_m else "No content"
+            preview_m   = re.search(r"\*\*You\*\*: (.+?)(?:\n|$)", content)
+            preview     = preview_m.group(1).strip()[:120] if preview_m else "No content"
             if len(preview) == 120:
                 preview += "..."
             transcripts.append({
@@ -227,33 +227,29 @@ def clear_history():
 
 @app.route("/api/state")
 def get_state():
-    """Return full dashboard state from file."""
     return jsonify(ds.get_state())
 
 
 @app.route("/api/poll")
 def poll():
-    """
-    Long-poll endpoint. Reads from dashboard_state.json which is written
-    by reachy_chat.py — works across separate processes.
-    """
     try:
         since = int(request.args.get("since", -1))
     except (ValueError, TypeError):
         since = -1
-
     deadline = time.time() + POLL_TIMEOUT
     while time.time() < deadline:
         if ds.get_version() > since:
             return jsonify(ds.get_state())
         time.sleep(0.3)
-
     return jsonify(ds.get_state())
 
 
 # ── Entry ─────────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    # Always reset active state on startup so browser shows home page
+    ds.set_inactive_on_startup()
+
     logger.info("Launcher server starting at http://localhost:5000")
     print("\n=== Reachy Mini Launcher ===")
     print("Open http://localhost:5000 in your browser.\n")
