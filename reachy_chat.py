@@ -2,19 +2,6 @@
 reachy_chat.py
 Main entry point for the Reachy Mini CPS Facilitator.
 
-Architecture:
-- LLM: Claude API (primary) with Ollama fallback
-- STT: faster-whisper (local)
-- TTS: edge-tts (Microsoft Neural TTS) via pygame MP3 playback
-- Robot: reachy-mini SDK (sim or real hardware)
-- CPS: stage-aware facilitation via cps_manager
-- Memory: rolling 5-session memory via memory_manager
-- Dashboard: live state updates via dashboard_state
-
-Recording:
-- Press Enter once to START speaking
-- Press Enter again to STOP speaking and trigger response
-
 Fixes applied:
 - Artifact tags stripped from spoken text (never spoken aloud)
 - Empty LLM response fallback phrases
@@ -22,7 +9,9 @@ Fixes applied:
 - Numbered list with natural pauses instead of bullet run-ons
 - pygame MP3 playback for cross-platform TTS compatibility
 - Context-aware thinking phrases (question vs statement)
-- Consent check on startup — Reachy asks if user is ready before CPS begins
+- Reachy Mini Lite audio devices explicitly targeted (device indices)
+- Sample rate set to 44100Hz to match Reachy Mini Audio hardware
+- Simplified startup prompt
 """
 
 import asyncio
@@ -66,29 +55,28 @@ from behaviors import (
     talking_animation, idle_loop, return_to_neutral
 )
 
-# ── Logging Setup ─────────────────────────────────────────────────────────────
-
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[
-        logging.FileHandler("reachy.log"),
-        logging.StreamHandler()
-    ]
+    handlers=[logging.FileHandler("reachy.log"), logging.StreamHandler()]
 )
 logger = logging.getLogger(__name__)
 
 for noisy in ["reachy_mini", "httpx", "faster_whisper", "root"]:
     logging.getLogger(noisy).setLevel(logging.ERROR)
 
+# Configuration
+OLLAMA_MODEL = "llama3.2:3b"
+CLAUDE_MODEL = "claude-haiku-4-5-20251001"
+VOICE        = "en-US-DavisNeural"
 
-# ── Configuration ─────────────────────────────────────────────────────────────
-
-OLLAMA_MODEL     = "llama3.2:3b"
-CLAUDE_MODEL     = "claude-haiku-4-5-20251001"
-SAMPLE_RATE      = 16000
-VOICE            = "en-US-AriaNeural"
-MIN_AUDIO_VOLUME = 0.0005
+# Audio device indices for Reachy Mini Lite USB
+# Run: uv run python -c "import sounddevice as sd; print(sd.query_devices())"
+# to find correct indices if these change
+SAMPLE_RATE          = 44100
+MIN_AUDIO_VOLUME     = 0.0005
+REACHY_INPUT_DEVICE  = 9    # Echo Cancelling Speakerphone (Reachy Mini Audio) - input
+REACHY_OUTPUT_DEVICE = 12   # Echo Cancelling Speakerphone (Reachy Mini Audio) - output
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 USE_CLAUDE        = bool(ANTHROPIC_API_KEY)
@@ -141,35 +129,21 @@ STAGE_GREETINGS = {
     ],
 }
 
-# Phrases that count as "yes" for the consent check
-CONSENT_YES = [
-    "yes", "yeah", "yep", "yup", "sure", "ready", "let's go", "lets go",
-    "absolutely", "definitely", "of course", "go ahead", "start", "begin",
-    "i'm ready", "im ready", "let's begin", "lets begin",
-]
-
-# Phrases that count as "no" for the consent check
-CONSENT_NO = [
-    "no", "nope", "not yet", "not now", "wait", "later", "hold on",
-    "give me a minute", "give me a second", "not ready",
-]
-
 BASE_SYSTEM_PROMPT = """You are Reachy Mini, a friendly, curious, and expressive small robot companion
 and Creative Problem Solving facilitator. You speak in short, warm, conversational sentences.
 Keep responses to 1-3 sentences unless you need more to facilitate effectively.
 You have memory of past conversations and may reference them naturally when relevant.
 
 When you feel the current CPS stage is complete, do the following in order:
-1. Speak a brief summary of what was covered in this stage — what the user shared, what was clarified, what was decided.
+1. Speak a brief summary of what was covered in this stage.
 2. Tell the user which stage comes next and what it involves.
 3. Say exactly this: "Whenever you're ready, just say 'I'm ready to move on to the next stage' and we'll continue."
-Do NOT advance automatically. Do NOT move on until the user says that phrase or something very close to it.
+Do NOT advance automatically. Do NOT move on until the user says that phrase.
 
 IMPORTANT: You are the facilitator — YOU lead the process. Never ask the user what the next
 step should be. Always guide them forward confidently.
 
-When your response contains a key artifact, tag it on a new line using one of these formats.
-These tags are NEVER spoken aloud — they are metadata only:
+When your response contains a key artifact, tag it on a new line. These tags are NEVER spoken:
 ARTIFACT_CHALLENGE: <the challenge statement>
 ARTIFACT_FOCUS: <the focus question>
 ARTIFACT_IDEA: <a single idea>
@@ -179,24 +153,19 @@ ARTIFACT_POTENTIAL: <a potential>
 ARTIFACT_CONCERN: <a concern>
 ARTIFACT_ACTION: <an action step>
 ARTIFACT_COMMIT: <a committed action>
-Only tag artifacts when they are clearly and explicitly stated. Do not force tags.
-Do NOT mention the artifact tags in your spoken response — they are silent metadata.
+Only tag artifacts when clearly and explicitly stated. Do not force tags.
+Do NOT mention artifact tags in your spoken response — they are silent metadata.
 
 After your response, on a new line write:
 MOOD: [one of: happy, thinking, surprised, neutral]"""
 
-
-# ── Whisper Model ─────────────────────────────────────────────────────────────
-
 try:
     WHISPER_MODEL = WhisperModel("tiny", device="cpu", compute_type="int8")
-    logger.info("Whisper model loaded successfully.")
+    logger.info("Whisper model loaded.")
 except Exception as e:
-    logger.critical(f"Failed to load Whisper model: {e}")
+    logger.critical(f"Failed to load Whisper: {e}")
     raise
 
-
-# ── Text Cleaning for Speech ──────────────────────────────────────────────────
 
 def clean_for_speech(text: str) -> str:
     text = re.sub(r'ARTIFACT_\w+:.*', '', text)
@@ -205,32 +174,22 @@ def clean_for_speech(text: str) -> str:
     text = re.sub(r'\*(.+?)\*', r'\1', text)
     text = re.sub(r'__(.+?)__', r'\1', text)
     text = re.sub(r'_(.+?)_', r'\1', text)
-
-    lines   = text.split('\n')
-    cleaned = []
-    counter = 1
-
+    lines, cleaned, counter = text.split('\n'), [], 1
     for line in lines:
         stripped = line.strip()
         if not stripped:
             continue
         if stripped.startswith('* ') or stripped.startswith('- '):
-            content = stripped[2:].strip()
-            cleaned.append(f"{counter}. {content}")
+            cleaned.append(f"{counter}. {stripped[2:].strip()}")
             counter += 1
         else:
-            if cleaned and not cleaned[-1].endswith('.'):
-                cleaned[-1] += '.'
+            if cleaned and not cleaned[-1].endswith('.'): cleaned[-1] += '.'
             cleaned.append(stripped)
             counter = 1
-
     result = ' '.join(cleaned)
-    result = re.sub(r'\.\.+', '.', result)
-    result = re.sub(r'\s+', ' ', result).strip()
-    return result
+    result = re.sub(r'\.\.'+, '.', result)
+    return re.sub(r'\s+', ' ', result).strip()
 
-
-# ── TTS ───────────────────────────────────────────────────────────────────────
 
 async def _speak_async(text: str, filepath: str):
     communicate = edge_tts.Communicate(text, voice=VOICE)
@@ -239,67 +198,51 @@ async def _speak_async(text: str, filepath: str):
 
 def speak(text: str):
     if not text or not text.strip():
-        logger.warning("speak() called with empty text — skipping.")
         return
-
     filepath = f"tts_{uuid.uuid4().hex[:8]}.mp3"
     try:
         asyncio.run(_speak_async(text, filepath))
-
         if not os.path.exists(filepath) or os.path.getsize(filepath) < 500:
-            logger.warning("TTS file too small or missing — skipping playback.")
             print(f"[Reachy would say]: {text}")
             return
-
-        pygame.mixer.init()
+        pygame.mixer.init(devicename="Echo Cancelling Speakerphone (Reachy Mini Audio)")
         pygame.mixer.music.load(filepath)
         pygame.mixer.music.play()
         while pygame.mixer.music.get_busy():
             pygame.time.wait(100)
         pygame.mixer.music.stop()
         pygame.mixer.quit()
-
     except Exception as e:
-        logger.error(f"TTS/audio playback error: {e}")
+        logger.error(f"TTS error: {e}")
         print(f"[Reachy would say]: {text}")
     finally:
         try:
-            if os.path.exists(filepath):
-                os.remove(filepath)
+            if os.path.exists(filepath): os.remove(filepath)
         except Exception:
             pass
 
 
-# ── Mic Check ─────────────────────────────────────────────────────────────────
-
 def check_mic() -> bool:
-    print("🎤 Checking microphone...")
+    print("Checking microphone...")
     try:
-        audio  = sd.rec(int(SAMPLE_RATE * 1.0), samplerate=SAMPLE_RATE,
-                        channels=1, dtype="float32")
+        audio = sd.rec(int(SAMPLE_RATE * 1.0), samplerate=SAMPLE_RATE,
+                       channels=1, dtype="float32", device=REACHY_INPUT_DEVICE)
         sd.wait()
         volume = np.sqrt(np.mean(audio**2))
         if volume < MIN_AUDIO_VOLUME:
-            print("⚠️  Mic seems very quiet. Check your microphone settings before speaking.")
+            print("Mic seems very quiet. Check your microphone settings.")
             logger.warning(f"Mic check failed — volume: {volume:.4f}")
             return False
-        print(f"✅ Mic OK (volume: {volume:.4f})")
+        print(f"Mic OK (volume: {volume:.4f})")
         logger.info(f"Mic check passed — volume: {volume:.4f}")
         return True
     except Exception as e:
         logger.error(f"Mic check error: {e}")
-        print("⚠️  Could not check microphone. Proceeding anyway.")
+        print("Could not check microphone. Proceeding anyway.")
         return False
 
 
-# ── Robot Expressions ─────────────────────────────────────────────────────────
-
-# Robot expressions handled by behaviors.py
-
-
-# ── Idle Animations ───────────────────────────────────────────────────────────
-
-_idle_stop   = threading.Event()
+_idle_stop = threading.Event()
 _idle_thread = None
 
 
@@ -318,8 +261,6 @@ def stop_idle():
     _idle_thread = None
 
 
-# ── Response Parsing + Artifact Extraction ────────────────────────────────────
-
 ARTIFACT_TAGS = {
     "ARTIFACT_CHALLENGE": ("clarify",   "challenge_statement", "set"),
     "ARTIFACT_FOCUS":     ("clarify",   "focus_question",      "set"),
@@ -333,113 +274,90 @@ ARTIFACT_TAGS = {
 }
 
 
-def parse_response(raw: str) -> tuple[str, str]:
-    lines      = raw.strip().split("\n")
-    mood       = "neutral"
-    text_lines = []
-
+def parse_response(raw: str) -> tuple:
+    lines, mood, text_lines = raw.strip().split("\n"), "neutral", []
     for line in lines:
         stripped = line.strip()
-
         if stripped.startswith("MOOD:"):
             mood = stripped.replace("MOOD:", "").strip().lower()
             continue
-
         matched = False
         for tag, (stage, key, action) in ARTIFACT_TAGS.items():
             if stripped.startswith(f"{tag}:"):
                 value = stripped[len(tag) + 1:].strip()
                 if value:
-                    if action == "set":
-                        ds.set_artifact(stage, key, value)
-                    else:
-                        ds.append_artifact(stage, key, value)
-                    logger.info(f"Artifact captured [{tag}]: {value}")
+                    if action == "set": ds.set_artifact(stage, key, value)
+                    else: ds.append_artifact(stage, key, value)
+                    logger.info(f"Artifact [{tag}]: {value}")
                 matched = True
                 break
-
         if not matched:
             text_lines.append(line)
+    return " ".join(text_lines).strip(), mood
 
-    text = " ".join(text_lines).strip()
-    return text, mood
-
-
-# ── LLM ──────────────────────────────────────────────────────────────────────
 
 def llm_call(system_prompt: str, messages: list) -> str:
     if USE_CLAUDE:
         try:
-            client   = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
+            client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
             response = client.messages.create(
-                model=CLAUDE_MODEL,
-                max_tokens=1024,
-                system=system_prompt,
-                messages=messages,
+                model=CLAUDE_MODEL, max_tokens=1024,
+                system=system_prompt, messages=messages,
             )
-            logger.info("LLM response received from Claude API.")
+            logger.info("LLM response from Claude API.")
             return response.content[0].text
         except anthropic.APIConnectionError:
             logger.warning("Claude API connection failed — falling back to Ollama.")
         except anthropic.RateLimitError:
-            logger.warning("Claude API rate limit hit — falling back to Ollama.")
+            logger.warning("Claude rate limit — falling back to Ollama.")
         except Exception as e:
-            logger.warning(f"Claude API error: {e} — falling back to Ollama.")
-
+            logger.warning(f"Claude error: {e} — falling back to Ollama.")
     try:
         response = ollama.chat(
             model=OLLAMA_MODEL,
             messages=[{"role": "system", "content": system_prompt}] + messages,
         )
-        logger.info("LLM response received from Ollama.")
+        logger.info("LLM response from Ollama.")
         return response["message"]["content"]
     except Exception as e:
-        logger.error(f"Ollama fallback also failed: {e}")
-        raise RuntimeError("Both Claude API and Ollama failed to respond.") from e
+        logger.error(f"Ollama failed: {e}")
+        raise RuntimeError("Both Claude API and Ollama failed.") from e
 
-
-# ── Audio Input ───────────────────────────────────────────────────────────────
 
 def record_audio() -> str:
     time.sleep(0.5)
-    print("🎤 Recording... press Enter again when you're done speaking.")
-
-    chunks    = []
-    stop_flag = threading.Event()
-    filepath  = f"input_{uuid.uuid4().hex[:8]}.wav"
+    print("Recording... press Enter again when you're done speaking.")
+    chunks, stop_flag = [], threading.Event()
+    filepath = f"input_{uuid.uuid4().hex[:8]}.wav"
 
     def record():
         try:
             with sd.InputStream(samplerate=SAMPLE_RATE, channels=1,
-                                 dtype="float32", blocksize=1024) as stream:
+                                 dtype="float32", blocksize=1024,
+                                 device=REACHY_INPUT_DEVICE) as stream:
                 while not stop_flag.is_set():
                     chunk, _ = stream.read(1024)
                     chunks.append(chunk.copy())
         except Exception as e:
-            logger.error(f"Recording stream error: {e}")
+            logger.error(f"Recording error: {e}")
 
     thread = threading.Thread(target=record, daemon=True)
     thread.start()
-
     try:
         input()
     except (EOFError, KeyboardInterrupt):
         pass
-
     stop_flag.set()
     thread.join(timeout=2.0)
 
     if not chunks:
         print("Nothing recorded — please try again.")
         return ""
-
-    audio  = np.concatenate(chunks, axis=0)
+    audio = np.concatenate(chunks, axis=0)
     volume = np.sqrt(np.mean(audio**2))
-
     if volume < MIN_AUDIO_VOLUME:
         print("Too quiet — please speak up and try again.")
         return ""
-
     try:
         sf.write(filepath, audio, SAMPLE_RATE)
         segments, _ = WHISPER_MODEL.transcribe(filepath)
@@ -453,55 +371,15 @@ def record_audio() -> str:
         return ""
     finally:
         try:
-            if os.path.exists(filepath):
-                os.remove(filepath)
+            if os.path.exists(filepath): os.remove(filepath)
         except Exception:
             pass
 
 
-# ── Consent Check ─────────────────────────────────────────────────────────────
-
-def consent_check(mini) -> bool:
-    """
-    Wait for user to press Enter, ask if they're ready to begin CPS.
-    Returns True if yes, False if no.
-    Loops back if the response is unclear.
-    """
-    while True:
-        try:
-            input("\nPress Enter to begin the CPS process with Reachy Mini: ")
-        except (EOFError, KeyboardInterrupt):
-            return False
-
-        speak("Hey! Are you ready to begin the Creative Problem Solving process?")
-
-        do_listening_pose(mini)
-        user_input = record_audio()
-
-        if not user_input:
-            speak("I didn't catch that — just say yes or no.")
-            continue
-
-        lowered = user_input.lower().strip()
-
-        if any(w in lowered for w in CONSENT_YES):
-            logger.info("Consent check: user said yes.")
-            return True
-        elif any(w in lowered for w in CONSENT_NO):
-            logger.info("Consent check: user said no.")
-            speak("No problem — I'll be right here whenever you're ready.")
-            return False
-        else:
-            speak("I didn't quite catch that — just say yes if you're ready, or no if you'd like to wait.")
-
-
-# ── Session Summary ───────────────────────────────────────────────────────────
-
 def generate_summary(current_session: dict, current_stage: str) -> str:
-    history   = current_session.get("history", [])
+    history = current_session.get("history", [])
     exchanges = len([m for m in history if m["role"] == "user"])
-    stage     = stage_label(current_stage)
-
+    stage = stage_label(current_stage)
     if exchanges == 0:
         return "We didn't get much done this time — but I'll be here when you're ready!"
     elif exchanges <= 3:
@@ -512,22 +390,17 @@ def generate_summary(current_session: dict, current_stage: str) -> str:
         return f"That was a productive session — {exchanges} exchanges and we're well into the {stage} stage. Great work!"
 
 
-# ── Main Chat Turn ────────────────────────────────────────────────────────────
-
 def chat(mini, current_session: dict, past_context: list,
          user_message: str, current_stage: str) -> None:
     system_prompt = build_system_prompt(current_stage, BASE_SYSTEM_PROMPT)
     append_to_session(current_session, "user", user_message)
     ds.add_transcript_entry("user", user_message, current_stage)
     messages = past_context + current_session["history"]
-
     stop_idle()
-
     is_question = user_message.strip().endswith("?")
     do_thinking_pose(mini, is_question)
     phrases = THINKING_PHRASES_QUESTION if is_question else THINKING_PHRASES_STATEMENT
     speak(random.choice(phrases))
-
     try:
         raw = llm_call(system_prompt, messages)
     except RuntimeError as e:
@@ -535,87 +408,56 @@ def chat(mini, current_session: dict, past_context: list,
         speak("I'm having trouble thinking right now — could you give me a moment and try again?")
         start_idle(mini)
         return
-
     text, mood = parse_response(raw)
-
     if not text.strip():
         text = random.choice(EMPTY_RESPONSE_FALLBACKS)
-        logger.warning("LLM returned empty text — using fallback phrase.")
-
+        logger.warning("LLM returned empty text — using fallback.")
     text = clean_for_speech(text)
-
     logger.info(f"Stage={stage_label(current_stage)} Mood={mood}")
     print(f"Reachy ({mood}) [{stage_label(current_stage)}]: {text}")
-
     ds.add_transcript_entry("assistant", text, current_stage)
-
     do_mood_reaction(mini, mood)
-
-    talk_stop   = threading.Event()
-    talk_thread = threading.Thread(
-        target=talking_animation, args=(mini, talk_stop), daemon=True
-    )
+    talk_stop = threading.Event()
+    talk_thread = threading.Thread(target=talking_animation, args=(mini, talk_stop), daemon=True)
     talk_thread.start()
     speak(text)
     talk_stop.set()
     talk_thread.join(timeout=2.0)
     return_to_neutral(mini)
-
     append_to_session(current_session, "assistant", text)
     start_idle(mini)
 
 
-# ── Session Mode ──────────────────────────────────────────────────────────────
-
 def prompt_session_mode() -> bool:
-    if LAUNCHER_MODE == "new":
-        return True
-    if LAUNCHER_MODE == "continue":
-        return False
-
-    has_previous = any(
-        os.path.exists(f) for f in [MEMORY_FILE, STAGE_FILE, SESSION_FILE]
-    )
-    if not has_previous:
-        return True
-
+    if LAUNCHER_MODE == "new": return True
+    if LAUNCHER_MODE == "continue": return False
+    has_previous = any(os.path.exists(f) for f in [MEMORY_FILE, STAGE_FILE, SESSION_FILE])
+    if not has_previous: return True
     print("\nA previous session was found.")
     print("  [1] Continue previous session")
     print("  [2] Start fresh\n")
-
     while True:
         choice = input("Enter 1 or 2: ").strip()
-        if choice == "1":
-            return False
-        elif choice == "2":
-            return True
-        else:
-            print("Please enter 1 or 2.")
+        if choice == "1": return False
+        elif choice == "2": return True
+        else: print("Please enter 1 or 2.")
 
-
-# ── Entry Point ───────────────────────────────────────────────────────────────
 
 def main():
     logger.info("Reachy Mini CPS Facilitator starting up.")
     print("\n=== Reachy Mini CPS Facilitator ===")
-
-    if USE_CLAUDE:
-        print("LLM: Claude API (claude-haiku)")
-    else:
-        print("LLM: Ollama fallback (no ANTHROPIC_API_KEY found)")
-        logger.warning("ANTHROPIC_API_KEY not set — using Ollama. Expect slower responses.")
+    print("LLM: Claude API (claude-haiku)" if USE_CLAUDE else "LLM: Ollama fallback")
+    if not USE_CLAUDE:
+        logger.warning("No ANTHROPIC_API_KEY — using Ollama.")
 
     check_mic()
 
     start_fresh = prompt_session_mode()
-
     if start_fresh:
         for f in [MEMORY_FILE, STAGE_FILE, SESSION_FILE]:
             if os.path.exists(f):
-                try:
-                    os.remove(f)
-                except IOError as e:
-                    logger.error(f"Could not clear {f}: {e}")
+                try: os.remove(f)
+                except IOError as e: logger.error(f"Could not clear {f}: {e}")
         session_id = new_session_id()
         save_session_id(session_id)
         ds.reset()
@@ -647,16 +489,13 @@ def main():
             logger.info("Connected to Reachy Mini.")
             start_idle(mini)
 
-            # ── Consent check loop ────────────────────────────────────────────
-            # Keep looping until user says yes or exits
-            while True:
-                ready = consent_check(mini)
-                if ready:
-                    speak(random.choice(STAGE_GREETINGS[current_stage]))
-                    break
-                # If no — loop back to "Press Enter to begin"
+            # Startup prompt
+            print("\nPress Enter and say you're ready to start the CPS process.")
+            input()
+            speak("Hey! I heard you — let's get started.")
+            speak(random.choice(STAGE_GREETINGS[current_stage]))
 
-            # ── Main conversation loop ────────────────────────────────────────
+            # Main conversation loop
             while True:
                 try:
                     cmd = input("\nPress Enter to speak (or type 'quit'): ").strip().lower()
@@ -665,8 +504,7 @@ def main():
 
                 if cmd == "quit":
                     stop_idle()
-                    summary = generate_summary(current_session, current_stage)
-                    speak(summary)
+                    speak(generate_summary(current_session, current_stage))
                     speak("See you next time!")
                     break
 
@@ -683,12 +521,11 @@ def main():
                         current_stage = nxt
                         save_stage(current_stage)
                         ds.set_stage(current_stage)
-                        logger.info(f"Advancing to stage: {current_stage}")
+                        logger.info(f"Advancing to: {current_stage}")
                         print(f"\n--- Stage: {stage_label(current_stage)} ---\n")
-                        greeting = random.choice(STAGE_GREETINGS[current_stage])
-                        speak(greeting)
+                        speak(random.choice(STAGE_GREETINGS[current_stage]))
                     else:
-                        logger.info("All CPS stages complete.")
+                        logger.info("All stages complete.")
                         print("\n--- All stages complete! ---\n")
                         speak("We've made it through the whole process — amazing work!")
                     start_idle(mini)
@@ -697,7 +534,7 @@ def main():
                 chat(mini, current_session, past_context, user_input, current_stage)
 
     except ConnectionError as e:
-        logger.critical(f"Could not connect to Reachy Mini: {e}")
+        logger.critical(f"Could not connect: {e}")
         print("\nCould not connect to Reachy Mini. Make sure the daemon is running.")
     except Exception as e:
         logger.critical(f"Unexpected error: {e}", exc_info=True)
@@ -708,7 +545,7 @@ def main():
         close_session(sessions, current_session)
         export_session(current_session, session_id)
         save_stage(current_stage)
-        logger.info("Session saved. Shutting down.")
+        logger.info("Session saved.")
         print("\nSession saved. Goodbye!")
 
 

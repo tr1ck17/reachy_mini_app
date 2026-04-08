@@ -363,3 +363,27 @@
 2026-04-07 15:26:47,393 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Sink card found.
 2026-04-07 15:26:47,909 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio sink.
 2026-04-07 15:26:50,521 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1000000000)
+2026-04-07 16:52:49,355 [INFO] reachy_mini.reachy_mini: Connection mode selected: localhost_only
+2026-04-07 16:52:50,258 [WARNING] reachy_mini.reachy_mini: Invalid media backend on Lite: default, using default backend.
+2026-04-07 16:52:50,259 [INFO] reachy_mini.media.media_manager: Using GStreamer media backend.
+2026-04-07 16:52:50,259 [INFO] reachy_mini.media.media_manager: Using GStreamer camera backend.
+2026-04-07 16:53:12,833 [INFO] reachy_mini.media.media_manager: Using GStreamer audio backend.
+2026-04-07 16:53:18,499 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1003958400)
+2026-04-07 16:54:58,249 [INFO] reachy_mini.reachy_mini: Connection mode selected: localhost_only
+2026-04-07 16:54:58,392 [WARNING] reachy_mini.reachy_mini: Invalid media backend on Lite: default, using default backend.
+2026-04-07 16:54:58,392 [INFO] reachy_mini.media.media_manager: Using GStreamer media backend.
+2026-04-07 16:54:58,393 [INFO] reachy_mini.media.media_manager: Using GStreamer camera backend.
+2026-04-07 16:55:02,510 [INFO] reachy_mini.media.media_manager: Using GStreamer audio backend.
+2026-04-07 16:55:07,357 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1005142500)
+2026-04-07 17:19:29,191 [INFO] reachy_mini.reachy_mini: Connection mode selected: localhost_only
+2026-04-07 17:19:29,990 [WARNING] reachy_mini.reachy_mini: Invalid media backend on Lite: default, using default backend.
+2026-04-07 17:19:29,991 [INFO] reachy_mini.media.media_manager: Using GStreamer media backend.
+2026-04-07 17:19:29,991 [INFO] reachy_mini.media.media_manager: Using GStreamer camera backend.
+2026-04-07 17:19:33,970 [INFO] reachy_mini.media.media_manager: Using GStreamer audio backend.
+2026-04-07 17:19:39,356 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1004199200)
+2026-04-07 17:26:49,509 [INFO] reachy_mini.reachy_mini: Connection mode selected: localhost_only
+2026-04-07 17:26:49,555 [WARNING] reachy_mini.reachy_mini: Invalid media backend on Lite: default, using default backend.
+2026-04-07 17:26:49,556 [INFO] reachy_mini.media.media_manager: Using GStreamer media backend.
+2026-04-07 17:26:49,556 [INFO] reachy_mini.media.media_manager: Using GStreamer camera backend.
+2026-04-07 17:26:53,464 [INFO] reachy_mini.media.media_manager: Using GStreamer audio backend.
+2026-04-07 17:26:58,354 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1004954400)
