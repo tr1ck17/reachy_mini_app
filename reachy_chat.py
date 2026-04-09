@@ -68,14 +68,14 @@ for noisy in ["reachy_mini", "httpx", "faster_whisper", "root"]:
 # Configuration
 OLLAMA_MODEL = "llama3.2:3b"
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"
-VOICE        = "en-US-DavisNeural"
+VOICE        = "en-US-GuyNeural"
 
 # Audio device indices for Reachy Mini Lite USB
 # Run: uv run python -c "import sounddevice as sd; print(sd.query_devices())"
 # to find correct indices if these change
 SAMPLE_RATE          = 44100
-MIN_AUDIO_VOLUME     = 0.0005
-REACHY_INPUT_DEVICE  = 9    # Echo Cancelling Speakerphone (Reachy Mini Audio) - input
+MIN_AUDIO_VOLUME     = 0.0003
+REACHY_INPUT_DEVICE  = 1    # Echo Cancelling Speakerphone (Reachy Mini Audio) - input
 REACHY_OUTPUT_DEVICE = 12   # Echo Cancelling Speakerphone (Reachy Mini Audio) - output
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
@@ -187,7 +187,7 @@ def clean_for_speech(text: str) -> str:
             cleaned.append(stripped)
             counter = 1
     result = ' '.join(cleaned)
-    result = re.sub(r'\.\.'+, '.', result)
+    result = re.sub(r'\.\.+', '.', result)
     return re.sub(r'\s+', ' ', result).strip()
 
 
@@ -205,7 +205,7 @@ def speak(text: str):
         if not os.path.exists(filepath) or os.path.getsize(filepath) < 500:
             print(f"[Reachy would say]: {text}")
             return
-        pygame.mixer.init(devicename="Echo Cancelling Speakerphone (Reachy Mini Audio)")
+        pygame.mixer.init()
         pygame.mixer.music.load(filepath)
         pygame.mixer.music.play()
         while pygame.mixer.music.get_busy():
