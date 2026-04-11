@@ -433,3 +433,7 @@
 2026-04-08 14:31:25,320 [INFO] reachy_mini.reachy_mini: Auto-detected local IPC endpoint. Using LOCAL backend.
 2026-04-08 14:31:25,320 [INFO] reachy_mini.media.media_manager: Using LOCAL backend (GStreamer IPC camera + GStreamer audio).
 2026-04-08 14:31:33,720 [INFO] reachy_mini.media.camera_gstreamer: Pipeline latency (live=True, min_latency=40000000, max_latency=18446744073709551615)
+2026-04-10 13:13:52,752 [INFO] reachy_mini.reachy_mini: Connection mode selected: localhost_only
+2026-04-10 13:13:53,534 [INFO] reachy_mini.reachy_mini: Auto-detected local IPC endpoint. Using LOCAL backend.
+2026-04-10 13:13:53,535 [INFO] reachy_mini.media.media_manager: Using LOCAL backend (GStreamer IPC camera + GStreamer audio).
+2026-04-10 13:14:20,104 [INFO] reachy_mini.media.camera_gstreamer: Pipeline latency (live=True, min_latency=40000000, max_latency=18446744073709551615)
