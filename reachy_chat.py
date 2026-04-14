@@ -22,6 +22,7 @@ import re
 import threading
 import time
 import uuid
+import re
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -55,6 +56,13 @@ from behaviors import (
     talking_animation, idle_loop, return_to_neutral
 )
 
+# VAD — import if available, fall back to Enter-to-speak if not
+try:
+    from vad import VADListener, CONSENT_YES, WAKE_PHRASES
+    USE_VAD = True
+except ImportError:
+    USE_VAD = False
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -68,15 +76,15 @@ for noisy in ["reachy_mini", "httpx", "faster_whisper", "root"]:
 # Configuration
 OLLAMA_MODEL = "llama3.2:3b"
 CLAUDE_MODEL = "claude-haiku-4-5-20251001"
-VOICE        = "en-US-DavisNeural"
+VOICE        = "en-US-GuyNeural"
 
 # Audio device indices for Reachy Mini Lite USB
 # Run: uv run python -c "import sounddevice as sd; print(sd.query_devices())"
-# to find correct indices if these change
-SAMPLE_RATE          = 44100
-MIN_AUDIO_VOLUME     = 0.0005
-REACHY_INPUT_DEVICE  = 9    # Echo Cancelling Speakerphone (Reachy Mini Audio) - input
-REACHY_OUTPUT_DEVICE = 12   # Echo Cancelling Speakerphone (Reachy Mini Audio) - output
+# to find correct indices if these change after reconnecting
+SAMPLE_RATE          = 44100   # mic native sample rate for recording
+MIN_AUDIO_VOLUME     = 0.0003
+REACHY_INPUT_DEVICE  = 1      # Echo Cancelling Speakerphone (Reachy Mini Audio) - input
+REACHY_OUTPUT_DEVICE = 12     # Echo Cancelling Speakerphone (Reachy Mini Audio) - output
 
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 USE_CLAUDE        = bool(ANTHROPIC_API_KEY)
@@ -168,7 +176,8 @@ except Exception as e:
 
 
 def clean_for_speech(text: str) -> str:
-    text = re.sub(r'ARTIFACT_\w+:.*', '', text)
+    text = text.encode('ascii', 'ignore').decode('ascii')
+    # text = re.sub(r'ARTIFACT_\w+:.*', '', text)
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
     text = re.sub(r'\*(.+?)\*', r'\1', text)
@@ -187,7 +196,7 @@ def clean_for_speech(text: str) -> str:
             cleaned.append(stripped)
             counter = 1
     result = ' '.join(cleaned)
-    result = re.sub(r'\.\.'+, '.', result)
+    result = re.sub(r'\.\.+', '.', result)
     return re.sub(r'\s+', ' ', result).strip()
 
 
@@ -205,7 +214,8 @@ def speak(text: str):
         if not os.path.exists(filepath) or os.path.getsize(filepath) < 500:
             print(f"[Reachy would say]: {text}")
             return
-        pygame.mixer.init(devicename="Echo Cancelling Speakerphone (Reachy Mini Audio)")
+        pygame.mixer.init()
+        # pygame.mixer.init(devicename="Echo Cancelling Speakerphone (Reachy Mini Audio)")
         pygame.mixer.music.load(filepath)
         pygame.mixer.music.play()
         while pygame.mixer.music.get_busy():
@@ -489,31 +499,119 @@ def main():
             logger.info("Connected to Reachy Mini.")
             start_idle(mini)
 
-            # Startup prompt
-            print("\nPress Enter and say you're ready to start the CPS process.")
-            input()
-            speak("Hey! I heard you — let's get started.")
-            speak(random.choice(STAGE_GREETINGS[current_stage]))
+            # ── Shared state for VAD + Enter-to-speak ────────────────────────
+            utterance_queue = __import__('queue').Queue()
+            vad_listener    = None
 
-            # Main conversation loop
+            def handle_utterance(text: str):
+                """Callback from VAD — routes text into the main loop queue."""
+                utterance_queue.put(text)
+
+            # ── Startup ───────────────────────────────────────────────────────
+            if USE_VAD:
+                print("\nVAD active — just speak when you're ready.")
+                print("(You can also press Enter at any time to use manual recording.)\n")
+                vad_listener = VADListener(
+                    input_device=REACHY_INPUT_DEVICE,
+                    sample_rate=SAMPLE_RATE,
+                    whisper_model=WHISPER_MODEL,
+                    on_utterance=handle_utterance,
+                    speak_fn=speak,
+                    llm_call_fn=llm_call if USE_CLAUDE else None,
+                    anthropic_api_key=ANTHROPIC_API_KEY,
+                )
+                vad_listener.start()
+                # Put Reachy to sleep — wake phrase or Enter wakes it
+                vad_listener.sleep()
+                speak("I'm listening. Say 'Hey Reachy' whenever you're ready to begin, "
+                      "or press Enter to start manually.")
+            else:
+                print("\nPress Enter and say you're ready to start the CPS process.")
+                input()
+                speak("Hey! I heard you — let's get started.")
+                speak(random.choice(STAGE_GREETINGS[current_stage]))
+
+            # ── Main conversation loop ────────────────────────────────────────
             while True:
-                try:
-                    cmd = input("\nPress Enter to speak (or type 'quit'): ").strip().lower()
-                except (EOFError, KeyboardInterrupt):
-                    break
+                user_input = None
 
-                if cmd == "quit":
+                if USE_VAD:
+                    # Non-blocking check of VAD queue, with Enter fallback
+                    import select, sys
+                    print("\n(Speaking or press Enter for manual input | type 'quit' to exit)")
+                    try:
+                        # Poll every 0.2s for VAD input or keyboard
+                        while user_input is None:
+                            # Check VAD queue
+                            try:
+                                user_input = utterance_queue.get_nowait()
+                            except __import__('queue').Empty:
+                                pass
+
+                            # Check if Enter was pressed (Windows-compatible)
+                            if user_input is None:
+                                import msvcrt
+                                if msvcrt.kbhit():
+                                    key = msvcrt.getwch()
+                                    if key == '\r' or key == '\n':
+                                        # Manual Enter-to-speak fallback
+                                        if vad_listener:
+                                            vad_listener.pause()
+                                        typed = input("Type 'quit' or press Enter to record: ").strip().lower()
+                                        if typed == 'quit':
+                                            user_input = '__QUIT__'
+                                        else:
+                                            stop_idle()
+                                            do_listening_pose(mini)
+                                            user_input = record_audio() or ''
+                                            if vad_listener:
+                                                vad_listener.resume()
+                                    elif key.lower() == 'q':
+                                        user_input = '__QUIT__'
+
+                            if user_input is None:
+                                __import__('time').sleep(0.2)
+
+                    except (EOFError, KeyboardInterrupt):
+                        break
+                else:
+                    # Original Enter-to-speak mode
+                    try:
+                        cmd = input("\nPress Enter to speak (or type 'quit'): ").strip().lower()
+                    except (EOFError, KeyboardInterrupt):
+                        break
+                    if cmd == 'quit':
+                        user_input = '__QUIT__'
+                    else:
+                        stop_idle()
+                        do_listening_pose(mini)
+                        user_input = record_audio() or ''
+
+                # ── Handle special signals ────────────────────────────────────
+                if user_input == '__QUIT__':
                     stop_idle()
+                    if vad_listener:
+                        vad_listener.stop()
                     speak(generate_summary(current_session, current_stage))
                     speak("See you next time!")
                     break
 
-                stop_idle()
-                do_listening_pose(mini)
-                user_input = record_audio()
-                if not user_input:
+                if user_input == '__CONSENT_YES__':
+                    # VAD wake sequence confirmed — begin CPS
+                    if vad_listener:
+                        vad_listener.wake()
+                    speak(random.choice(STAGE_GREETINGS[current_stage]))
+                    continue
+
+                if not user_input or not user_input.strip():
                     start_idle(mini)
                     continue
+
+                # ── Pause VAD while processing ────────────────────────────────
+                if vad_listener:
+                    vad_listener.pause()
+
+                stop_idle()
 
                 if check_for_advance(user_input):
                     nxt = next_stage(current_stage)
@@ -523,9 +621,7 @@ def main():
                         ds.set_stage(current_stage)
                         logger.info(f"Advancing to: {current_stage}")
                         print(f"\n--- Stage: {stage_label(current_stage)} ---\n")
-                        # Speak a brief transition acknowledgement
                         speak(random.choice(STAGE_GREETINGS[current_stage]))
-                        # Let LLM properly open the new stage with context
                         chat(mini, current_session, past_context,
                              f"We just moved into the {stage_label(current_stage)} stage. "
                              f"Please acknowledge the transition warmly and open this stage "
@@ -536,11 +632,19 @@ def main():
                         print("\n--- All stages complete! ---\n")
                         speak("We've made it through the whole process — amazing work!")
                         speak("I'll save our session now. It was a pleasure working through this with you!")
+                        if vad_listener:
+                            vad_listener.stop()
                         break
                     start_idle(mini)
+                    if vad_listener:
+                        vad_listener.resume()
                     continue
 
                 chat(mini, current_session, past_context, user_input, current_stage)
+
+                # Resume VAD after response
+                if vad_listener:
+                    vad_listener.resume()
 
     except ConnectionError as e:
         logger.critical(f"Could not connect: {e}")
