@@ -38,6 +38,10 @@ ADVANCE_KEYWORDS = [
     "ready to move on to the next stage",
     "i'm ready to move on to the next stage",
     "im ready to move on to the next stage",
+    "we are finished",
+    "I'm ready to wrap up",
+    "im ready to wrap up",
+    "ready to wrap up"
 ]
 
 

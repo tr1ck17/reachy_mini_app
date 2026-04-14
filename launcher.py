@@ -253,4 +253,4 @@ if __name__ == "__main__":
     logger.info("Launcher server starting at http://localhost:5000")
     print("\n=== Reachy Mini Launcher ===")
     print("Open http://localhost:5000 in your browser.\n")
-    app.run(host="localhost", port=5000, debug=False, threaded=True)
+    app.run(host="localhost", port=5001, debug=False, threaded=True)

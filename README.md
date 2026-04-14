@@ -1,145 +1,105 @@
 # Reachy Mini — CPS Facilitator
 
-A voice-powered Creative Problem Solving facilitator built on the Reachy Mini robot platform.
-Uses a local or cloud LLM to guide users through the four stages of CPS (Clarify, Ideate, Develop, Implement)
-with expressive robot behaviors, live dashboard, session history, and rolling session memory.
+A voice-driven Creative Problem Solving (CPS) facilitator built on the Reachy Mini robot platform. Guides users through all four CPS stages — Clarify, Ideate, Develop, Implement — via natural voice conversation, expressive robot behaviors, a live web dashboard, and persistent session memory.
 
 ---
 
-## Prerequisites
+## What It Does
 
-Install all of the following before cloning the project.
+- **Voice-driven conversation** — Press Enter to speak, press Enter again to send
+- **Four CPS stages** — Clarify → Ideate → Develop → Implement, fully facilitated by Claude API
+- **Expressive robot behaviors** — Thinking poses, talking animation, listening pose, idle movements, mood reactions
+- **Live dashboard** — Real-time transcript, artifact capture, stage progress, and stage timer at `localhost:5001`
+- **Session memory** — Remembers past sessions and resumes where you left off
+- **History viewer** — Browse all past transcripts at `localhost:5001/history`
 
-### 1. Python 3.10–3.13
-Download from [python.org](https://python.org). During installation, check **"Add Python to PATH"**.
+---
 
-### 2. Git
-Download from [git-scm.com](https://git-scm.com).
+## Requirements
 
-### 3. uv (Python package manager)
+- Python 3.10–3.13
+- [uv](https://docs.astral.sh/uv/) package manager
+- Reachy Mini robot (Lite via USB, Wireless via WiFi, or MuJoCo simulation)
+- Anthropic API key (Claude API)
+- Windows (tested), macOS/Linux should work with minor audio device changes
+
+---
+
+## Setup
+
 ```powershell
-pip install uv
-```
+# 1. Clone the repo
+git clone https://github.com/tr1ck17/reachy_mini_app.git
+cd reachy_mini_app
 
-### 4. Ollama (local LLM fallback)
-Download from [ollama.com](https://ollama.com). After installing, pull the model:
-```powershell
+# 2. Install dependencies
+uv sync
+
+# 3. Set up your API key
+cp .env.example .env
+# Edit .env and add your ANTHROPIC_API_KEY
+
+# 4. Pull Ollama fallback model (optional)
 ollama pull llama3.2:3b
 ```
-> Ollama auto-starts on Windows — you do not need to run `ollama serve` manually.
-
-### 5. ffmpeg (audio processing)
-```powershell
-winget install ffmpeg
-```
-> If winget is unavailable, download from [ffmpeg.org](https://ffmpeg.org) and add to your system PATH.
-
-### 6. Reachy Mini package (simulation support)
-```powershell
-pip install reachy-mini[mujoco]
-```
-> The `[mujoco]` extra is required for simulation. For real hardware only, `pip install reachy-mini` is sufficient.
-
-### 7. Enable microphone access
-Go to **Settings → Privacy & Security → Microphone** and ensure desktop app access is enabled.
-
----
-
-## Installation
-
-### Step 1 — Clone the repository
-```powershell
-git clone https://github.com/YOURUSERNAME/reachy_mini_app.git
-cd reachy_mini_app
-```
-> Replace `YOURUSERNAME` with your actual GitHub username.
-
-### Step 2 — Install Python dependencies
-```powershell
-uv sync
-```
-This reads `pyproject.toml` and installs everything into a local virtual environment automatically.
-
-> If `pygame` has issues installing via uv, try: `pip install pygame --break-system-packages`
-
-### Step 3 — Set your Anthropic API key (strongly recommended)
-Copy the example env file and fill in your key:
-```powershell
-cp .env.example .env
-```
-Then open `.env` and replace `your-api-key-here` with your actual key from [console.anthropic.com](https://console.anthropic.com).
-
-The app reads the key automatically from `.env` on startup. Without it, the app falls back to Ollama
-which is significantly slower on CPU and less reliable at following CPS facilitation instructions.
-
-> `.env` is gitignored — your key will never be pushed to GitHub.
-
-### Step 4 — Check for GPU (optional)
-```powershell
-nvidia-smi
-```
-If a GPU is detected, Ollama will use it automatically for faster local responses.
 
 ---
 
 ## Running the App
 
-### Option A — Browser Launcher (recommended)
+### With Dashboard (recommended)
 
-**Terminal 1 — Start the Reachy daemon:**
 ```powershell
-cd reachy_mini_app
-uv run reachy-mini-daemon --sim
-```
-A MuJoCo window opens showing the 3D robot simulation. **Keep this terminal open for the entire session.**
+# Terminal 1 — start the Reachy daemon
+uv run reachy-mini-daemon --sim      # simulation
+# uv run reachy-mini-daemon           # real hardware
 
-> For real hardware: power on the Reachy Mini and connect via USB (Lite) or ensure it's on the same
-> WiFi network (Wireless). The daemon is not needed for real hardware.
-
-**Terminal 2 — Start the launcher server:**
-```powershell
-cd reachy_mini_app
+# Terminal 2 — start the launcher
 uv run launcher.py
+
+# Then open http://localhost:5001 in your browser
 ```
 
-**Browser — Open the launcher:**
-```
-http://localhost:5000
-```
-The launcher shows your last session info and gives you four options:
-- **Continue** — resume the previous session (restores stage and memory)
-- **Start New Session** — begin fresh with a new CPS problem
-- **📖 View Session History** — browse and read all past transcripts
-- **🗑 Clear All History** — delete all memory, stage, and transcripts (with confirmation)
-
----
-
-### Option B — Run Directly from Terminal
+### Without Dashboard (terminal only)
 
 ```powershell
+# Terminal 1
+uv run reachy-mini-daemon --sim
+
+# Terminal 2
 uv run reachy_chat.py
 ```
-The app will ask at startup whether to continue a previous session or start fresh.
 
 ---
 
-## How to Speak
+## Audio Setup (Reachy Mini Lite)
 
+The app targets the Reachy Mini Lite audio devices explicitly. If your device indices differ, run:
+
+```powershell
+uv run python -c "import sounddevice as sd; print(sd.query_devices())"
 ```
-1. Press Enter        → starts recording (mic check plays on startup)
-2. Speak your message
-3. Press Enter again  → stops recording, Reachy responds
+
+Then update these constants in `reachy_chat.py`:
+
+```python
+REACHY_INPUT_DEVICE  = 1     # Echo Cancelling Speakerphone - input
+REACHY_OUTPUT_DEVICE = 12    # Echo Cancelling Speakerphone - output
+SAMPLE_RATE          = 44100
 ```
 
-To exit cleanly, type `quit` and press Enter. Reachy will give a session summary before closing.
+---
 
-### Advancing CPS Stages
-Reachy will ask if you're ready to move on when it senses a stage is complete. To advance, say:
-- "let's move on"
-- "next stage"
-- "I'm ready to move on"
-- "let's go to the next stage"
-- "move forward to the next"
+## How to Use
+
+1. Start the daemon and launcher (see above)
+2. Open `http://localhost:5001` in your browser
+3. Click **Start New Session** or **Continue Session**
+4. In the terminal: press Enter when prompted and say you're ready
+5. Speak your message, press Enter again to send
+6. Reachy facilitates through all four CPS stages
+7. Say **"I'm ready to move on to the next stage"** to advance stages
+8. Type `quit` to end the session cleanly
 
 ---
 
@@ -147,87 +107,69 @@ Reachy will ask if you're ready to move on when it senses a stage is complete. T
 
 ```
 reachy_mini_app/
+├── reachy_chat.py          # Main app entry point
+├── launcher.py             # Flask server — launcher UI + dashboard
+├── behaviors.py            # Robot movement library
+├── cps_manager.py          # CPS stage management + advance keywords
+├── memory_manager.py       # Session persistence + transcript export
+├── dashboard_state.py      # File-based IPC between processes
+├── index.html              # Combined launcher + live dashboard UI
+├── history.html            # Session history viewer
 ├── cps/
-│   ├── clarify.md          ← Clarify stage knowledge base
-│   ├── ideate.md           ← Ideate stage knowledge base
-│   ├── develop.md          ← Develop stage knowledge base
-│   └── implement.md        ← Implement stage knowledge base
-├── sessions/               ← auto-created, readable session transcripts
-├── cps_manager.py          ← CPS stage tracking and prompt management
-├── memory_manager.py       ← Rolling session memory (last 5 sessions)
-├── dashboard_state.py      ← Shared state between app and web dashboard
-├── reachy_chat.py          ← Main application entry point
-├── launcher.py             ← Flask launcher/dashboard server
-├── index.html              ← Launcher + live dashboard UI
-├── history.html            ← Session history viewer
-├── memory.json             ← auto-created, rolling session memory
-├── stage_state.json        ← auto-created, saves CPS stage between sessions
-├── session_id.json         ← auto-created, tracks current problem's session ID
-├── reachy.log              ← auto-created, detailed application log
-├── pyproject.toml          ← Python project config and dependencies
-├── requirements.txt        ← pip-compatible dependency list
-├── PROJECT.md              ← Full architecture and project documentation
-└── uv.lock                 ← Locked dependency versions
+│   ├── clarify.md          # Clarify stage knowledge base
+│   ├── ideate.md           # Ideate stage knowledge base
+│   ├── develop.md          # Develop stage knowledge base
+│   └── implement.md        # Implement stage knowledge base
+├── sessions/               # Transcript .md files (auto-generated)
+├── .env                    # API keys (gitignored)
+├── .env.example            # Template for .env
+├── pyproject.toml          # Dependencies
+└── PROJECT.md              # Full project documentation
 ```
 
 ---
 
-## Troubleshooting
+## Environment Variables
 
-### Responses are very slow
-- Set `ANTHROPIC_API_KEY` — Claude API drops response time from minutes to seconds
-- Run `nvidia-smi` to check for a GPU — Ollama uses it automatically if found
-- Try a faster model: `ollama pull qwen2.5:0.5b` then change `OLLAMA_MODEL` in `reachy_chat.py`
+```
+ANTHROPIC_API_KEY=your-key-here
+```
 
-### Mic not picking up audio
-- Settings → Privacy & Security → Microphone → enable access
-- Check Windows Sound settings — correct input device must be selected and not muted
-- Disconnect Bluetooth audio devices and test with built-in mic first
-- The app runs a mic check on startup and will warn you if volume is too low
-
-### App starts in wrong CPS stage
-- Choose **Start Fresh** at the startup prompt or click **Start New Session** in the launcher
-- Or manually delete `stage_state.json` and `memory.json` from the project root
-
-### App can't connect to Reachy Mini
-- Make sure the daemon terminal is open and running
-- For Wireless: PC and Reachy must be on the same WiFi network
-- For Lite: check the USB connection
-
-### Daemon won't start
-- Run `pip install reachy-mini[mujoco]` to ensure the MuJoCo extra is installed
-
-### Module not found errors
-- Run `uv sync` inside the project folder
-- Always use `uv run` prefix, not plain `python`
-
-### History page shows no transcripts
-- Transcripts are only created after a full session ends (quit cleanly or Ctrl+C)
-- Make sure the launcher server is running at `localhost:5000`
+`REACHY_SESSION_MODE` is set automatically by the launcher — do not set manually.
 
 ---
 
-## Quick Reference
+## LLM Backends
 
-| Task | Command |
-|------|---------|
-| Clone repo | `git clone https://github.com/YOURUSERNAME/reachy_mini_app.git` |
-| Install deps | `uv sync` |
-| Set API key | Copy `.env.example` to `.env` and fill in your key |
-| Start daemon | `uv run reachy-mini-daemon --sim` |
-| Start launcher | `uv run launcher.py` |
-| Open launcher | `http://localhost:5000` |
-| View history | `http://localhost:5000/history` |
-| Run directly | `uv run reachy_chat.py` |
+| Backend | Speed | Quality | Cost |
+|---|---|---|---|
+| Claude API (primary) | ~1-2s | Excellent | ~$0.01/session |
+| Ollama llama3.2:3b (fallback) | 1-4min (CPU) / 5-30s (GPU) | Moderate | Free |
+
+Claude API is strongly recommended for real sessions. Ollama is useful for offline development.
 
 ---
 
-## Notes
+## CPS Stage Flow
 
-- Session transcripts are saved to `sessions/` as `.md` files — one file per CPS problem,
-  with all sessions for that problem appended together
-- The app remembers the last 5 sessions and uses them as LLM context
-- Logs are written to `reachy.log` in the project root for debugging
-- `memory.json`, `stage_state.json`, `session_id.json`, `sessions/`, and `*.log` files
-  are gitignored and will not be pushed to GitHub
-- For full architecture documentation, see `PROJECT.md`
+```
+Clarify → Ideate → Develop → Implement
+```
+
+Each stage is facilitated by Claude using a dedicated knowledge base file injected into the system prompt. Stage advancement is always user-controlled — say **"I'm ready to move on to the next stage"** when prompted.
+
+---
+
+## Roadmap
+
+- [ ] VAD continuous voice input (no Enter required)
+- [ ] ElevenLabs TTS for better voice quality
+- [ ] `--sim` / `--real` CLI args to auto-spawn daemon
+- [ ] Publish to Hugging Face app store
+- [ ] flask-socketio for real-time dashboard updates
+
+---
+
+## License
+
+MIT
