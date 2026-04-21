@@ -39,7 +39,7 @@ from reachy_mini import ReachyMini
 from reachy_mini.utils import create_head_pose
 
 from cps_manager import (
-    STAGES, build_system_prompt, check_for_advance,
+    STAGES, build_system_prompt, check_for_advance, check_for_end,
     next_stage, stage_label
 )
 from memory_manager import (
@@ -307,12 +307,15 @@ def llm_call(system_prompt: str, messages: list) -> str:
     if USE_CLAUDE:
         try:
             client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-            response = client.messages.create(
+            full_text = []
+            with client.messages.stream(
                 model=CLAUDE_MODEL, max_tokens=1024,
                 system=system_prompt, messages=messages,
-            )
-            logger.info("LLM response from Claude API.")
-            return response.content[0].text
+            ) as stream:
+                for text in stream.text_stream:
+                    full_text.append(text)
+            logger.info("LLM response from Claude API (streaming).")
+            return "".join(full_text)
         except anthropic.APIConnectionError:
             logger.warning("Claude API connection failed — falling back to Ollama.")
         except anthropic.RateLimitError:
@@ -499,6 +502,7 @@ def main():
             # ── Shared state for VAD + Enter-to-speak ────────────────────────
             utterance_queue = __import__('queue').Queue()
             vad_listener    = None
+            _awaiting_end   = False   # True after first end phrase detected
 
             def handle_utterance(text: str):
                 """Callback from VAD — routes text into the main loop queue."""
@@ -635,6 +639,40 @@ def main():
                     start_idle(mini)
                     if vad_listener:
                         vad_listener.resume()
+                    continue
+
+                # ── End session voice phrase ──────────────────────────────
+                if _awaiting_end:
+                    # User already said they want to end — check confirmation
+                    lowered = user_input.lower()
+                    if any(p in lowered for p in [
+                        "let's end the session for today",
+                        "lets end the session for today",
+                        "end the session for today",
+                        "yes", "yeah", "yep", "sure", "confirm"
+                    ]):
+                        if vad_listener: vad_listener.stop()
+                        stop_idle()
+                        speak(generate_summary(current_session, current_stage))
+                        speak("It was great working through this with you. See you next time!")
+                        break
+                    else:
+                        # They changed their mind
+                        _awaiting_end = False
+                        speak("No problem — let's keep going. What's on your mind?")
+                        start_idle(mini)
+                        if vad_listener: vad_listener.resume()
+                        continue
+
+                if check_for_end(user_input):
+                    _awaiting_end = True
+                    if vad_listener: vad_listener.pause()
+                    speak(
+                        "Of course. If you're sure, just say "
+                        "'Let's end the session for today' and I'll save everything and wrap up."
+                    )
+                    if vad_listener: vad_listener.resume()
+                    start_idle(mini)
                     continue
 
                 chat(mini, current_session, past_context, user_input, current_stage)
