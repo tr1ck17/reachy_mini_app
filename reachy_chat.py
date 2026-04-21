@@ -307,12 +307,15 @@ def llm_call(system_prompt: str, messages: list) -> str:
     if USE_CLAUDE:
         try:
             client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-            response = client.messages.create(
+            full_text = []
+            with client.messages.stream(
                 model=CLAUDE_MODEL, max_tokens=1024,
                 system=system_prompt, messages=messages,
-            )
-            logger.info("LLM response from Claude API.")
-            return response.content[0].text
+            ) as stream:
+                for text in stream.text_stream:
+                    full_text.append(text)
+            logger.info("LLM response from Claude API (streaming).")
+            return "".join(full_text)
         except anthropic.APIConnectionError:
             logger.warning("Claude API connection failed — falling back to Ollama.")
         except anthropic.RateLimitError:

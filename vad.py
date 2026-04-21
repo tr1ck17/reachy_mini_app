@@ -37,12 +37,24 @@ WAKE_PHRASES = [
     "wake up",
     "daddys home",
     "daddy's home",
-    "hey ready",      # common whisper mishear of "hey reachy"
+    "hey ready",      # common whisper mishear
     "hey richie",     # common whisper mishear
+    "hey ritchie",    # common whisper mishear
+    "hey reggie",     # common whisper mishear
+    "a reggie",       # common whisper mishear
+    "hey regi",       # common whisper mishear
+    "hey rich",       # common whisper mishear
+    "hey reach",      # common whisper mishear
     "okay reachy",
     "yo reachy",
     "reachy",
+    "richie",
+    "reggie",
     "hey reachie",
+    "let's go reachy",
+    "lets go reachy",
+    "rise and shine",
+    "wakey wakey",
 ]
 
 CONSENT_YES = [
@@ -66,7 +78,7 @@ CHUNK_SIZE         = 2048    # samples per chunk (~46ms at 44100Hz)
 SPEECH_THRESHOLD   = 0.018
 
 # Seconds of silence after speech before treating utterance as done
-SILENCE_DURATION   = 1.2
+SILENCE_DURATION   = 2.0
 
 # Minimum seconds of speech to bother transcribing (filters out clicks/noise)
 MIN_SPEECH_DURATION = 0.5
