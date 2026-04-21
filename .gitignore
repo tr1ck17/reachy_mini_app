@@ -30,3 +30,6 @@ session_id.json
 .env
 
 dashboard_state.json
+
+reachy.log
+*.log
