@@ -11,7 +11,7 @@ Fixes applied:
 - Context-aware thinking phrases (question vs statement)
 - Reachy Mini Lite audio devices explicitly targeted (device indices)
 - Sample rate set to 44100Hz to match Reachy Mini Audio hardware
-- Simplified startup prompt
+- VAD continuous voice detection with wake phrase activation
 """
 
 import asyncio
@@ -22,7 +22,6 @@ import re
 import threading
 import time
 import uuid
-import re
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -40,7 +39,7 @@ from reachy_mini import ReachyMini
 from reachy_mini.utils import create_head_pose
 
 from cps_manager import (
-    STAGES, build_system_prompt, check_for_advance,
+    STAGES, build_system_prompt, check_for_advance, check_for_end,
     next_stage, stage_label
 )
 from memory_manager import (
@@ -176,8 +175,7 @@ except Exception as e:
 
 
 def clean_for_speech(text: str) -> str:
-    text = text.encode('ascii', 'ignore').decode('ascii')
-    # text = re.sub(r'ARTIFACT_\w+:.*', '', text)
+    text = re.sub(r'ARTIFACT_\w+:.*', '', text)
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
     text = re.sub(r'\*(.+?)\*', r'\1', text)
@@ -196,7 +194,7 @@ def clean_for_speech(text: str) -> str:
             cleaned.append(stripped)
             counter = 1
     result = ' '.join(cleaned)
-    result = re.sub(r'\.\.+', '.', result)
+    result = re.sub(r'\.\.'+, '.', result)
     return re.sub(r'\s+', ' ', result).strip()
 
 
@@ -214,8 +212,7 @@ def speak(text: str):
         if not os.path.exists(filepath) or os.path.getsize(filepath) < 500:
             print(f"[Reachy would say]: {text}")
             return
-        pygame.mixer.init()
-        # pygame.mixer.init(devicename="Echo Cancelling Speakerphone (Reachy Mini Audio)")
+        pygame.mixer.init(devicename="Echo Cancelling Speakerphone (Reachy Mini Audio)")
         pygame.mixer.music.load(filepath)
         pygame.mixer.music.play()
         while pygame.mixer.music.get_busy():
@@ -502,6 +499,7 @@ def main():
             # ── Shared state for VAD + Enter-to-speak ────────────────────────
             utterance_queue = __import__('queue').Queue()
             vad_listener    = None
+            _awaiting_end   = False   # True after first end phrase detected
 
             def handle_utterance(text: str):
                 """Callback from VAD — routes text into the main loop queue."""
@@ -638,6 +636,40 @@ def main():
                     start_idle(mini)
                     if vad_listener:
                         vad_listener.resume()
+                    continue
+
+                # ── End session voice phrase ──────────────────────────────
+                if _awaiting_end:
+                    # User already said they want to end — check confirmation
+                    lowered = user_input.lower()
+                    if any(p in lowered for p in [
+                        "let's end the session for today",
+                        "lets end the session for today",
+                        "end the session for today",
+                        "yes", "yeah", "yep", "sure", "confirm"
+                    ]):
+                        if vad_listener: vad_listener.stop()
+                        stop_idle()
+                        speak(generate_summary(current_session, current_stage))
+                        speak("It was great working through this with you. See you next time!")
+                        break
+                    else:
+                        # They changed their mind
+                        _awaiting_end = False
+                        speak("No problem — let's keep going. What's on your mind?")
+                        start_idle(mini)
+                        if vad_listener: vad_listener.resume()
+                        continue
+
+                if check_for_end(user_input):
+                    _awaiting_end = True
+                    if vad_listener: vad_listener.pause()
+                    speak(
+                        "Of course. If you're sure, just say "
+                        "'Let's end the session for today' and I'll save everything and wrap up."
+                    )
+                    if vad_listener: vad_listener.resume()
+                    start_idle(mini)
                     continue
 
                 chat(mini, current_session, past_context, user_input, current_stage)

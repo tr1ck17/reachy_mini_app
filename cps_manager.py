@@ -35,13 +35,6 @@ ADVANCE_KEYWORDS = [
     "yes lets move",
     "sure let's move",
     "sure lets move",
-    "ready to move on to the next stage",
-    "i'm ready to move on to the next stage",
-    "im ready to move on to the next stage",
-    "we are finished",
-    "I'm ready to wrap up",
-    "im ready to wrap up",
-    "ready to wrap up"
 ]
 
 
@@ -97,6 +90,28 @@ Behavioral rules for this stage:
 """
 
 
+# Keywords that indicate the user wants to end the session entirely.
+END_KEYWORDS = [
+    "let's end the session for today",
+    "lets end the session for today",
+    "end the session for today",
+    "end the session",
+    "let's end the session",
+    "lets end the session",
+    "i'd like to end",
+    "id like to end",
+    "we're done for today",
+    "were done for today",
+    "i want to stop",
+    "let's stop for today",
+    "lets stop for today",
+    "i'm done for today",
+    "im done for today",
+    "wrap up the session",
+    "end our session",
+]
+
+
 # ── Stage Utilities ───────────────────────────────────────────────────────────
 
 def check_for_advance(text: str) -> bool:
@@ -107,6 +122,15 @@ def check_for_advance(text: str) -> bool:
     """
     text_lower = text.lower()
     return any(keyword in text_lower for keyword in ADVANCE_KEYWORDS)
+
+
+def check_for_end(text: str) -> bool:
+    """
+    Return True if the user wants to end the session.
+    Two-step confirmation is handled in reachy_chat.py.
+    """
+    text_lower = text.lower()
+    return any(keyword in text_lower for keyword in END_KEYWORDS)
 
 
 def next_stage(current: str) -> str | None:

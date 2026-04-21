@@ -616,3 +616,9 @@ RuntimeError: Cannot change resolution of Mujoco simulated camera for now.
 2026-04-15 20:37:27,783 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Sink card found.
 2026-04-15 20:37:28,216 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio sink.
 2026-04-15 20:37:30,951 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1000000000)
+2026-04-21 08:40:40,615 [INFO] reachy_mini.reachy_mini: Connection mode selected: localhost_only
+2026-04-21 08:40:40,947 [WARNING] reachy_mini.reachy_mini: Invalid media backend on Lite: default, using default backend.
+2026-04-21 08:40:40,947 [INFO] reachy_mini.media.media_manager: Using GStreamer media backend.
+2026-04-21 08:40:40,947 [INFO] reachy_mini.media.media_manager: Using GStreamer camera backend.
+2026-04-21 08:41:01,251 [INFO] reachy_mini.media.media_manager: Using GStreamer audio backend.
+2026-04-21 08:41:06,248 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1001917900)
