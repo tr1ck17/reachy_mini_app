@@ -11,7 +11,7 @@ Fixes applied:
 - Context-aware thinking phrases (question vs statement)
 - Reachy Mini Lite audio devices explicitly targeted (device indices)
 - Sample rate set to 44100Hz to match Reachy Mini Audio hardware
-- Simplified startup prompt
+- VAD continuous voice detection with wake phrase activation
 """
 
 import asyncio
@@ -22,7 +22,6 @@ import re
 import threading
 import time
 import uuid
-import re
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -176,8 +175,7 @@ except Exception as e:
 
 
 def clean_for_speech(text: str) -> str:
-    text = text.encode('ascii', 'ignore').decode('ascii')
-    # text = re.sub(r'ARTIFACT_\w+:.*', '', text)
+    text = re.sub(r'ARTIFACT_\w+:.*', '', text)
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
     text = re.sub(r'\*(.+?)\*', r'\1', text)
@@ -196,7 +194,7 @@ def clean_for_speech(text: str) -> str:
             cleaned.append(stripped)
             counter = 1
     result = ' '.join(cleaned)
-    result = re.sub(r'\.\.+', '.', result)
+    result = re.sub(r'\.\.'+, '.', result)
     return re.sub(r'\s+', ' ', result).strip()
 
 
@@ -214,8 +212,7 @@ def speak(text: str):
         if not os.path.exists(filepath) or os.path.getsize(filepath) < 500:
             print(f"[Reachy would say]: {text}")
             return
-        pygame.mixer.init()
-        # pygame.mixer.init(devicename="Echo Cancelling Speakerphone (Reachy Mini Audio)")
+        pygame.mixer.init(devicename="Echo Cancelling Speakerphone (Reachy Mini Audio)")
         pygame.mixer.music.load(filepath)
         pygame.mixer.music.play()
         while pygame.mixer.music.get_busy():

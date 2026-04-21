@@ -616,3 +616,4 @@ RuntimeError: Cannot change resolution of Mujoco simulated camera for now.
 2026-04-15 20:37:27,783 [WARNING] reachy_mini.media.audio_base: No Reachy Mini Audio Sink card found.
 2026-04-15 20:37:28,216 [WARNING] reachy_mini.media.audio_base: No specific audio card found, using default audio sink.
 2026-04-15 20:37:30,951 [INFO] reachy_mini.media.camera_base: Pipeline latency (live=True, min_latency=20000000, max_latency=1000000000)
+2026-04-20 23:38:08,027 [INFO] reachy_mini.reachy_mini: Auto connection: localhost attempt failed (Failed to connect to ws://localhost:8000/ws/sdk: [WinError 10061] No connection could be made because the target machine actively refused it). Trying remote host reachy-mini.local.
