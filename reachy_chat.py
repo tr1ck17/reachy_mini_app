@@ -194,7 +194,7 @@ def clean_for_speech(text: str) -> str:
             cleaned.append(stripped)
             counter = 1
     result = ' '.join(cleaned)
-    result = re.sub(r'\.\.'+, '.', result)
+    result = re.sub(r'\.\.+', '.', result)
     return re.sub(r'\s+', ' ', result).strip()
 
 
