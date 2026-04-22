@@ -303,12 +303,40 @@ class VADListener:
 
     def _transcribe(self, audio: np.ndarray) -> tuple[str, bool]:
         """
-        Transcribe audio. Returns (text, is_hallucination).
-        is_hallucination=True means discard the result.
+        Transcribe audio using Deepgram Nova-2 if available, else Whisper.
+        Returns (text, is_hallucination).
         """
         filepath = f"vad_{uuid.uuid4().hex[:8]}.wav"
         try:
             sf.write(filepath, audio, self.sample_rate)
+
+            # ── Deepgram STT ──────────────────────────────────────────────────
+            deepgram_key = os.environ.get("DEEPGRAM_API_KEY")
+            if deepgram_key:
+                try:
+                    from deepgram import DeepgramClient, PrerecordedOptions
+                    dg = DeepgramClient(deepgram_key)
+                    with open(filepath, "rb") as f:
+                        audio_data = {"buffer": f.read(), "mimetype": "audio/wav"}
+                    options = PrerecordedOptions(
+                        model="nova-2",
+                        language="en",
+                        smart_format=True,
+                    )
+                    response = dg.listen.prerecorded.v("1").transcribe_file(audio_data, options)
+                    text = response.results.channels[0].alternatives[0].transcript.strip()
+                    confidence = response.results.channels[0].alternatives[0].confidence
+                    if confidence < 0.4:
+                        logger.debug(f"VAD: low confidence ({confidence:.2f}) — discarding")
+                        return "", True
+                    if text:
+                        logger.info(f"VAD transcribed (Deepgram): {text}")
+                        print(f"You: {text}")
+                    return text, False
+                except Exception as e:
+                    logger.warning(f"Deepgram STT failed ({e}) — falling back to Whisper")
+
+            # ── Whisper fallback ──────────────────────────────────────────────
             segments, info = self.whisper_model.transcribe(
                 filepath,
                 language="en",
@@ -319,7 +347,6 @@ class VADListener:
             if not segments:
                 return "", False
 
-            # Check no_speech_prob — high value = Whisper is guessing
             avg_no_speech = sum(s.no_speech_prob for s in segments) / len(segments)
             if avg_no_speech > NO_SPEECH_THRESHOLD:
                 logger.debug(f"VAD: hallucination detected (no_speech_prob={avg_no_speech:.2f})")
@@ -327,7 +354,7 @@ class VADListener:
 
             text = " ".join(s.text for s in segments).strip()
             if text:
-                logger.info(f"VAD transcribed: {text}")
+                logger.info(f"VAD transcribed (Whisper): {text}")
                 print(f"You: {text}")
             return text, False
 

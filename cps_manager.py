@@ -109,6 +109,17 @@ END_KEYWORDS = [
     "im done for today",
     "wrap up the session",
     "end our session",
+    "let's end this session",
+    "lets end this session",
+    "end this session",
+    "let's end this session for today",
+    "lets end this session for today",
+    "end this session for today",
+    "i'm getting tired",
+    "im getting tired",
+    "i need to stop",
+    "can we stop",
+    "can we end",
 ]
 
 

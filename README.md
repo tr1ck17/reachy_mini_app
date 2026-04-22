@@ -13,6 +13,8 @@ A voice-driven Creative Problem Solving (CPS) facilitator built on the Reachy Mi
 - **Session memory** — remembers past sessions and resumes where you left off
 - **History viewer** — browse all past transcripts at `localhost:5001/history`
 - **Enter-to-speak fallback** — always available if VAD isn't needed
+- **Press P to pause VAD** — toggle mic listening on/off mid-session
+- **Voice end phrase** — say "let's end the session for today" to save and exit cleanly
 
 ---
 
@@ -91,11 +93,14 @@ In PowerShell, from inside the `reachy_mini_app` folder:
 Copy-Item .env.example .env
 ```
 
-Then open `.env` in any text editor (Notepad, VS Code) and add your API key:
+Then open `.env` in any text editor (Notepad, VS Code) and add your API keys:
 
 ```
 ANTHROPIC_API_KEY=sk-ant-your-key-here
+DEEPGRAM_API_KEY=your-deepgram-key-here
 ```
+
+Deepgram is optional but recommended — sign up free at [deepgram.com](https://deepgram.com) for $200 free credit. Without it, the app falls back to edge-tts for speech and faster-whisper for transcription.
 
 Save the file.
 
@@ -204,9 +209,9 @@ To disable VAD entirely and use Enter-to-speak only, simply delete `vad.py` from
 
 | Component | Current | Alternatives |
 |---|---|---|
-| LLM | Claude API (claude-haiku) | Ollama llama3.2:3b (offline fallback) |
-| STT | faster-whisper tiny (local) | Deepgram Nova-2, OpenAI Whisper API, AssemblyAI |
-| TTS | edge-tts GuyNeural (free) | ElevenLabs, OpenAI TTS (tts-1-hd), Cartesia Sonic, Kokoro TTS |
+| LLM | Claude API (claude-haiku) with streaming | Ollama llama3.2:3b (offline fallback) |
+| STT | Deepgram Nova-2 (cloud, ~$0.004/min) | faster-whisper small (local fallback) |
+| TTS | Deepgram Aura (aura-2-orion-en) | ElevenLabs, OpenAI TTS (tts-1-hd), edge-tts (fallback) |
 | VAD | numpy RMS energy (local) | pvporcupine wake word, AssemblyAI built-in VAD |
 | Audio I/O | sounddevice + soundfile | — |
 | Web server | Flask (threaded) | flask-socketio (real-time) |

@@ -53,10 +53,12 @@ change with MuJoCo simulated camera that crashes on startup.
 
 | Component | Current Implementation | Notes |
 |---|---|---|
-| LLM (primary) | Claude API — `claude-haiku-4-5-20251001` | Best instruction-following for CPS |
+| LLM (primary) | Claude API — `claude-haiku-4-5-20251001` with streaming | Best instruction-following for CPS |
 | LLM (fallback) | Ollama — `llama3.2:3b` (local, offline) | Too slow on CPU for real sessions |
-| STT | faster-whisper `tiny` model (local, offline) | Free, slight delay — see alternatives below |
-| TTS | edge-tts — `en-US-GuyNeural` voice | Free, decent quality — see alternatives below |
+| STT (primary) | Deepgram Nova-2 (cloud) | ~$0.004/min, sub-100ms transcription |
+| STT (fallback) | faster-whisper `small` model (local, offline) | Used when Deepgram unavailable |
+| TTS (primary) | Deepgram Aura — `aura-2-orion-en` voice | Natural sounding, low latency |
+| TTS (fallback) | edge-tts — `en-US-GuyNeural` voice | Free, used when Deepgram unavailable |
 | TTS playback | pygame (MP3 format) | Cross-platform |
 | Audio I/O | sounddevice + soundfile | — |
 | VAD | numpy RMS energy detection (vad.py) | No external dependencies |
@@ -73,20 +75,17 @@ The current STT pipeline transcribes locally using faster-whisper running on CPU
 free and offline but adds a transcription delay between the user finishing speaking and
 Claude receiving the text.
 
-**Current:** `faster-whisper tiny` — local CPU inference, ~0.5-1s transcription delay,
-good accuracy for English, free.
+**Current:** Deepgram Nova-2 — cloud-based, sub-100ms transcription, ~$0.004/minute.
+Falls back to faster-whisper `small` (local CPU) if Deepgram is unavailable.
 
-**Recommended upgrade — Deepgram Nova-2:**
-- Cloud-based, sub-100ms transcription
-- ~$0.004/minute — essentially free for personal use
-- Handles accents and noise better than local Whisper
-- Drop-in replacement: swap the `_transcribe()` call in `vad.py` with a Deepgram API call
-- Would noticeably speed up the conversation loop
+**How it works:** Audio is captured via sounddevice, saved as WAV, sent to Deepgram's
+prerecorded API, and transcript returned in under 100ms. Confidence score below 0.4 is
+discarded as noise.
 
-**Other alternatives:**
-- **OpenAI Whisper API** — same model, runs on OpenAI servers. $0.006/minute. Easiest drop-in.
-- **AssemblyAI** — solid accuracy, has built-in VAD which could replace our custom VAD module entirely
-- **faster-whisper small/medium** — same local approach but better accuracy at cost of more CPU/RAM
+**Alternatives if needed:**
+- **OpenAI Whisper API** — same model, runs on OpenAI servers. $0.006/minute. Easy drop-in.
+- **AssemblyAI** — solid accuracy, has built-in VAD which could replace our custom VAD module
+- **faster-whisper small/medium** — free local fallback, already implemented
 
 ---
 
@@ -96,21 +95,21 @@ The current TTS pipeline uses Microsoft's edge-tts which generates MP3 files via
 cloud API and plays them back through pygame. The quality is decent but sounds clearly
 synthetic in longer utterances.
 
-**Current:** `edge-tts GuyNeural` — free Microsoft Neural TTS, decent quality, ~0.5s
-generation time per response.
+**Current:** Deepgram Aura — `aura-2-orion-en` male voice, natural sounding, low latency.
+Uses plain HTTP POST to Deepgram's `/v1/speak` endpoint. Falls back to edge-tts GuyNeural
+if Deepgram API key is not set.
 
-**Recommended upgrade — ElevenLabs:**
-- Genuinely human-sounding speech, handles emotion and pacing naturally
-- Huge voice library, voice cloning available
-- Free tier: 10,000 characters/month (~5-6 full CPS sessions)
-- $5/month for 30,000 characters after that
-- Drop-in replacement: swap `_speak_async()` in `reachy_chat.py` with ElevenLabs API call
-- Would make the single biggest perceptible improvement to how the app feels
+**How it works:** Text is posted to `https://api.deepgram.com/v1/speak?model=aura-2-orion-en`,
+response is written to a temp MP3 file, played via pygame, then deleted.
 
-**Other alternatives:**
-- **OpenAI TTS (tts-1-hd)** — very natural, fast, $15/million characters (extremely cheap)
-- **Cartesia Sonic** — newer, designed for real-time use, very low latency
-- **OmniVoice (k2-fsa)** — open source, 600+ languages, voice cloning, requires GPU
+**Alternative Deepgram voices worth trying:**
+- `aura-2-arcas-en` — deeper, more authoritative
+- `aura-2-zeus-en` — natural male voice
+
+**Other TTS alternatives:**
+- **ElevenLabs** — best quality, free tier covers ~5-6 sessions/month
+- **OpenAI TTS (tts-1-hd)** — excellent quality, $15/million characters
+- **edge-tts** — free fallback, already implemented
 
 **Implementation note:** Both ElevenLabs and OpenAI TTS are straightforward API swaps.
 The `speak()` function in `reachy_chat.py` is isolated enough that swapping TTS backends
@@ -175,10 +174,12 @@ requires changing only that function and adding the relevant API key to `.env`.
 ### VAD Architecture
 - numpy RMS energy detection — no external VAD dependencies
 - sounddevice InputStream at 44100Hz native rate
-- Whisper `no_speech_prob` filter discards hallucinations
+- Deepgram Nova-2 primary transcription, faster-whisper small fallback
+- Confidence threshold 0.4 — low confidence results discarded
 - Punctuation stripping before wake phrase matching
-- `condition_on_previous_text=False` prevents Whisper hallucinating continuations
 - `pause()` drains queue — prevents Reachy hearing its own TTS output
+- **Press P** during session to toggle VAD pause/resume (useful during live demos)
+- **End session voice phrase** — "let's end the session for today" triggers clean save and exit
 
 ### LLM Strategy
 - Claude API is primary — 1-2s, reliable instruction-following for CPS structure
