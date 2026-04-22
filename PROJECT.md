@@ -37,7 +37,7 @@ with expressive robot behaviors, live dashboard, persistent session memory, and 
 
 - **Reachy Mini Lite** — connects via USB, daemon runs on host PC
 - **Reachy Mini Wireless** — runs onboard RPi CM4, connects via WiFi
-- **Simulation** — MuJoCo-based sim, daemon runs on host PC (`uv run reachy-mini-daemon --sim`)
+- **Simulation** — MuJoCo-based sim, daemon runs on host PC (`uv run reachy_chat.py --sim`)
 
 **Note:** SDK version must be pinned to `reachy-mini==1.5.0`. Version 1.6.1 has a breaking
 change with MuJoCo simulated camera that crashes on startup.
@@ -51,19 +51,69 @@ change with MuJoCo simulated camera that crashes on startup.
 
 ## Tech Stack
 
-| Component | Technology |
-|---|---|
-| LLM (primary) | Claude API — `claude-haiku-4-5-20251001` |
-| LLM (fallback) | Ollama — `llama3.2:3b` (local, offline) |
-| Speech-to-text | faster-whisper `tiny` model (local, offline) |
-| Text-to-speech | edge-tts — `en-US-GuyNeural` voice |
-| TTS playback | pygame (MP3 format — cross-platform) |
-| Audio I/O | sounddevice + soundfile |
-| VAD | numpy RMS energy detection (vad.py) |
-| Robot SDK | reachy-mini==1.5.0 |
-| Web server | Flask (threaded) |
-| Package manager | uv |
-| Python version | 3.10–3.13 |
+| Component | Current Implementation | Notes |
+|---|---|---|
+| LLM (primary) | Claude API — `claude-haiku-4-5-20251001` with streaming | Best instruction-following for CPS |
+| LLM (fallback) | Ollama — `llama3.2:3b` (local, offline) | Too slow on CPU for real sessions |
+| STT (primary) | Deepgram Nova-2 (cloud) | ~$0.004/min, sub-100ms transcription |
+| STT (fallback) | faster-whisper `small` model (local, offline) | Used when Deepgram unavailable |
+| TTS (primary) | Deepgram Aura — `aura-2-orion-en` voice | Natural sounding, low latency |
+| TTS (fallback) | edge-tts — `en-US-GuyNeural` voice | Free, used when Deepgram unavailable |
+| TTS playback | pygame (MP3 format) | Cross-platform |
+| Audio I/O | sounddevice + soundfile | — |
+| VAD | numpy RMS energy detection (vad.py) | No external dependencies |
+| Robot SDK | reachy-mini==1.5.0 | Pinned — 1.6.1 breaks sim camera |
+| Web server | Flask (threaded) | Launcher + dashboard |
+| Package manager | uv | — |
+| Python version | 3.10–3.13 | — |
+
+---
+
+## STT — Current and Alternatives
+
+The current STT pipeline transcribes locally using faster-whisper running on CPU. This is
+free and offline but adds a transcription delay between the user finishing speaking and
+Claude receiving the text.
+
+**Current:** Deepgram Nova-2 — cloud-based, sub-100ms transcription, ~$0.004/minute.
+Falls back to faster-whisper `small` (local CPU) if Deepgram is unavailable.
+
+**How it works:** Audio is captured via sounddevice, saved as WAV, sent to Deepgram's
+prerecorded API, and transcript returned in under 100ms. Confidence score below 0.4 is
+discarded as noise.
+
+**Alternatives if needed:**
+- **OpenAI Whisper API** — same model, runs on OpenAI servers. $0.006/minute. Easy drop-in.
+- **AssemblyAI** — solid accuracy, has built-in VAD which could replace our custom VAD module
+- **faster-whisper small/medium** — free local fallback, already implemented
+
+---
+
+## TTS — Current and Alternatives
+
+The current TTS pipeline uses Microsoft's edge-tts which generates MP3 files via a free
+cloud API and plays them back through pygame. The quality is decent but sounds clearly
+synthetic in longer utterances.
+
+**Current:** Deepgram Aura — `aura-2-orion-en` male voice, natural sounding, low latency.
+Uses plain HTTP POST to Deepgram's `/v1/speak` endpoint. Falls back to edge-tts GuyNeural
+if Deepgram API key is not set.
+
+**How it works:** Text is posted to `https://api.deepgram.com/v1/speak?model=aura-2-orion-en`,
+response is written to a temp MP3 file, played via pygame, then deleted.
+
+**Alternative Deepgram voices worth trying:**
+- `aura-2-arcas-en` — deeper, more authoritative
+- `aura-2-zeus-en` — natural male voice
+
+**Other TTS alternatives:**
+- **ElevenLabs** — best quality, free tier covers ~5-6 sessions/month
+- **OpenAI TTS (tts-1-hd)** — excellent quality, $15/million characters
+- **edge-tts** — free fallback, already implemented
+
+**Implementation note:** Both ElevenLabs and OpenAI TTS are straightforward API swaps.
+The `speak()` function in `reachy_chat.py` is isolated enough that swapping TTS backends
+requires changing only that function and adding the relevant API key to `.env`.
 
 ---
 
@@ -73,6 +123,7 @@ change with MuJoCo simulated camera that crashes on startup.
 
 **`reachy_chat.py`** — Main entry point:
 - VAD mode when `vad.py` is present — continuous listening, wake phrase activation
+- `--sim` and `--real` CLI flags to auto-spawn daemon (no separate terminal needed)
 - Enter-to-speak fallback when VAD unavailable
 - Consent flow on startup — Reachy asks if user is ready before CPS begins
 - Mic check on startup at 44100Hz using device index 1
@@ -81,7 +132,7 @@ change with MuJoCo simulated camera that crashes on startup.
 - Mood reaction + talking animation while speaking
 - Dashboard state updates after every exchange
 - Stage advancement when user says advance phrase
-- LLM-generated stage opening after each transition (not just hardcoded greeting)
+- LLM-generated stage opening after each transition
 - Session ends cleanly with closing message and break after Implement
 
 **`vad.py`** — Voice Activity Detection module:
@@ -92,174 +143,106 @@ change with MuJoCo simulated camera that crashes on startup.
 - Wake phrase detection with punctuation stripping before matching
 - Consent flow after wake — yes continues, no goes back to sleep
 - Smart completeness check via Claude API before dispatching utterance
-- 18s silence timeout check-in ("Still there?")
+- 18s silence timeout check-in
 - `pause()` drains audio queue — prevents Reachy hearing itself
-- Falls back gracefully — delete vad.py to revert to Enter-to-speak
 
-**`behaviors.py`** — Natural movement library:
-- `THINKING_QUESTION_POSES` — upward/sideways gaze for questions
-- `THINKING_STATEMENT_POSES` — downward/reflective poses for statements
-- `talking_animation()` — background thread: head bobs while speaking
-- `LISTENING_POSES` — attentive tilt when recording starts
-- Mood reactions: happy, surprised, thinking, neutral
-- `idle_loop()` — subtle randomized movements every 3-6 seconds
-- All functions silently ignore errors to prevent conversation crashes
+**`behaviors.py`** — Natural movement library
 
-**`cps_manager.py`** — CPS stage management:
-- `STAGES` — `["clarify", "ideate", "develop", "implement"]`
-- `ADVANCE_KEYWORDS` — strict list including "i'm ready to move on to the next stage"
-- `load_stage()` — reads knowledge base `.md` for current stage
-- `build_system_prompt()` — injects stage knowledge into base prompt
-- `check_for_advance()` — detects explicit advance phrases
+**`cps_manager.py`** — CPS stage management
 
-**`memory_manager.py`** — Session persistence:
-- Rolling memory: last 5 sessions in `memory.json`
-- Stage state: current CPS stage in `stage_state.json`
-- Session ID: unique ID per CPS problem in `session_id.json`
-- Transcript export: all sessions for one problem in `sessions/session_<id>.md`
+**`memory_manager.py`** — Session persistence
 
-**`dashboard_state.py`** — File-based IPC between processes:
-- `set_inactive_on_startup()` — called by launcher on start, always shows home page
-- `set_stage()` — timestamps stage start, records previous stage time
-- `stage_started_at` + `stage_times` — drives live stage timer in dashboard
-- Atomic writes via `.tmp` → `os.replace()`
-- Version counter drives long-polling efficiency
+**`dashboard_state.py`** — File-based IPC between processes
 
-**`launcher.py`** — Flask web server:
-- Always resets `active=False` on startup — browser always opens to home page
-- `/api/poll?since=N` — long-poll blocks up to 30s until version > N
-- Serves dashboard at `localhost:5001`
-- Serves history viewer at `localhost:5001/history`
+**`launcher.py`** — Flask web server (port 5001)
 
-**`index.html`** — Combined launcher + live dashboard:
-- Launcher state: session info, Continue/Start New/History/Clear buttons
-- Dashboard state: stage progress, artifacts, live transcript, stage timers
-- Stage timer: live ticker for active stage, green bars for completed stages
+**`index.html`** — Combined launcher + live dashboard
 
-**`history.html`** — Session history viewer at `localhost:5001/history`
+**`history.html`** — Session history viewer
 
 ### CPS Knowledge Base
 
-- `cps/clarify.md` — Clarify stage: challenge framing, data gathering, Focus Question
-- `cps/ideate.md` — Ideate stage: brainstorming, no consulting, clustering
-- `cps/develop.md` — Develop stage: PPCo process (Plusses, Potentials, Concerns, Actions)
-- `cps/implement.md` — Implement stage: concrete commitments, timelines, accountability
-
-### Auto-Generated Files (gitignored)
-
-- `memory.json`, `stage_state.json`, `session_id.json` — session persistence
-- `dashboard_state.json` — live IPC state
-- `sessions/` — markdown transcripts
-- `reachy.log` — application log
-- `vad_*.wav`, `tts_*.mp3`, `input_*.wav` — temp audio files (auto-deleted)
-
-### Placeholder Files (future features)
-
-- `replace_files_with/_test_reachy_chat.py` — instructions for `--sim`/`--real` CLI args
-- `replace_files_with/_test_launcher.py` — instructions for hardware toggle in launcher UI
+- `cps/clarify.md` — Clarify stage knowledge base
+- `cps/ideate.md` — Ideate stage knowledge base
+- `cps/develop.md` — Develop stage knowledge base
+- `cps/implement.md` — Implement stage knowledge base
 
 ---
 
 ## Key Design Decisions
 
 ### VAD Architecture
-- **numpy RMS energy detection** — no external VAD dependencies, works cross-platform
-- **sounddevice InputStream** — runs at device native rate (44100Hz), no resampling needed
-- **Whisper `no_speech_prob` filter** — discards hallucinated transcriptions
-- **Punctuation stripping** — "Hey, Reachy." matches "hey reachy" reliably
-- **`condition_on_previous_text=False`** — prevents Whisper hallucinating continuations
-- **`pause()` drains queue** — prevents Reachy hearing its own TTS output
+- numpy RMS energy detection — no external VAD dependencies
+- sounddevice InputStream at 44100Hz native rate
+- Deepgram Nova-2 primary transcription, faster-whisper small fallback
+- Confidence threshold 0.4 — low confidence results discarded
+- Punctuation stripping before wake phrase matching
+- `pause()` drains queue — prevents Reachy hearing its own TTS output
+- **Press P** during session to toggle VAD pause/resume (useful during live demos)
+- **End session voice phrase** — "let's end the session for today" triggers clean save and exit
 
 ### LLM Strategy
-- Claude API is primary — 1-2s, reliable instruction-following
+- Claude API is primary — 1-2s, reliable instruction-following for CPS structure
 - Ollama is fallback — free but too slow on CPU, unreliable at complex prompts
 - Stage knowledge base injected dynamically at each LLM call
-- After stage transitions, LLM generates opening — not just a hardcoded greeting
+- After stage transitions, LLM generates opening — not hardcoded greeting
 
 ### Stage Advancement
 - User-controlled only — Reachy summarizes, gives magic phrase, waits
-- Magic phrase: "Whenever you're ready, just say 'I'm ready to move on to the next stage'"
-- After final stage (Implement), session ends cleanly with closing message and break
+- After final stage (Implement), session ends cleanly with break
 
 ### Audio Architecture
 - Unique filenames per turn (UUID) — eliminates file lock conflicts
 - 44100Hz native rate for Reachy Mini Lite mic
 - pygame for TTS playback — set Reachy Mini Audio as Windows default output
-- File size check before playback — skips corrupt/empty MP3s
 
 ### Dashboard IPC
 - File-based via `dashboard_state.json` — works across separate OS processes
 - Atomic writes using `.tmp` → `os.replace()`
-- Long-polling with version counter — zero unnecessary requests
+- Long-polling with version counter
 - Launcher always resets `active=False` on startup
 
 ---
 
 ## Running the App
 
-### With Dashboard (recommended)
-
 ```powershell
-# Terminal 1
-uv run reachy-mini-daemon        # real Lite hardware
-# uv run reachy-mini-daemon --sim  # simulation
+# Recommended — one terminal
+uv run reachy_chat.py --sim     # simulation
+uv run reachy_chat.py --real    # Lite hardware
 
-# Terminal 2
-uv run launcher.py
-
-# Browser: http://localhost:5001
-# History: http://localhost:5001/history
-```
-
-### Without Dashboard
-
-```powershell
-uv run reachy-mini-daemon
-uv run reachy_chat.py
-```
-
-### New Machine Setup
-
-```powershell
-git clone https://github.com/tr1ck17/reachy_mini_app.git
-cd reachy_mini_app
-uv sync
-cp .env.example .env
-# Edit .env and add ANTHROPIC_API_KEY
-
-# Find audio device indices on this machine:
-uv run python -c "import sounddevice as sd; print(sd.query_devices())"
-# Update REACHY_INPUT_DEVICE in reachy_chat.py
+# With dashboard
+uv run launcher.py              # http://localhost:5001
 ```
 
 ---
 
 ## Known Issues & Limitations
 
-- **SDK version** — must use `reachy-mini==1.5.0`. Version 1.6.1 breaks MuJoCo sim camera
+- **SDK version** — must use `reachy-mini==1.5.0`
 - **Audio devices** — device indices change between machines and after reconnecting USB
 - **VAD tuning** — thresholds in `vad.py` may need adjustment per environment
 - **Ollama quality** — unreliable at following CPS knowledge base on CPU
-- **Artifact capture** — only works reliably with Claude API, not Ollama
+- **TTS quality** — edge-tts sounds synthetic; ElevenLabs or OpenAI TTS recommended upgrade
 
 ---
 
 ## Roadmap
 
-### Immediate
-- [ ] Sync latest changes into HF package
-- [ ] Test on desktop machine (clone, uv sync, find audio devices)
-- [ ] `--sim` / `--real` CLI args to auto-spawn daemon
+### Audio Quality (High Priority)
+- [ ] ElevenLabs TTS — most impactful single upgrade for realism
+- [ ] OpenAI TTS (tts-1-hd) — cheaper alternative with similar quality improvement
+- [ ] Deepgram Nova-2 STT — faster transcription, better accuracy
 
-### Short Term
-- [ ] ElevenLabs or OmniVoice TTS upgrade
-- [ ] Publish to Hugging Face app store
+### Infrastructure
+- [ ] Make HF Space public
+- [ ] Test HF package on real hardware end-to-end
 - [ ] flask-socketio for real-time dashboard updates
 
-### Long Term
+### Features
+- [ ] pvporcupine wake word detection
 - [ ] Desktop app packaging (PyInstaller)
 - [ ] Multi-user group facilitation mode
-- [ ] Wake word via pvporcupine ("Hey Reachy")
 
 ---
 
@@ -269,3 +252,4 @@ uv run python -c "import sounddevice as sd; print(sd.query_devices())"
 - **CPS Framework:** Buffalo State Creative Problem Solving model
 - **Academic context:** School project with Professor Zhang
 - **GitHub:** https://github.com/tr1ck17/reachy_mini_app
+- **HF Space:** https://huggingface.co/spaces/tr1ck17/cps_reachy_mini
