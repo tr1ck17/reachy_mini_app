@@ -27,7 +27,6 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import anthropic
-import edge_tts
 import numpy as np
 import ollama
 os.environ["PYGAME_HIDE_SUPPORT_PROMPT"] = "1"
@@ -167,7 +166,7 @@ After your response, on a new line write:
 MOOD: [one of: happy, thinking, surprised, neutral]"""
 
 try:
-    WHISPER_MODEL = WhisperModel("tiny", device="cpu", compute_type="int8")
+    WHISPER_MODEL = WhisperModel("small", device="cpu", compute_type="int8")
     logger.info("Whisper model loaded.")
 except Exception as e:
     logger.critical(f"Failed to load Whisper: {e}")
@@ -175,6 +174,7 @@ except Exception as e:
 
 
 def clean_for_speech(text: str) -> str:
+    text = text.encode('ascii', 'ignore').decode('ascii')
     text = re.sub(r'ARTIFACT_\w+:.*', '', text)
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
     text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)
@@ -198,9 +198,8 @@ def clean_for_speech(text: str) -> str:
     return re.sub(r'\s+', ' ', result).strip()
 
 
-async def _speak_async(text: str, filepath: str):
-    communicate = edge_tts.Communicate(text, voice=VOICE)
-    await communicate.save(filepath)
+DEEPGRAM_API_KEY = os.environ.get("DEEPGRAM_API_KEY")
+DEEPGRAM_VOICE   = "aura-2-orion-en"   # best male voice
 
 
 def speak(text: str):
@@ -208,7 +207,25 @@ def speak(text: str):
         return
     filepath = f"tts_{uuid.uuid4().hex[:8]}.mp3"
     try:
-        asyncio.run(_speak_async(text, filepath))
+        if DEEPGRAM_API_KEY:
+            import requests
+            response = requests.post(
+                f"https://api.deepgram.com/v1/speak?model={DEEPGRAM_VOICE}",
+                headers={
+                    "Authorization": f"Token {DEEPGRAM_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={"text": text},
+            )
+            with open(filepath, "wb") as f:
+                f.write(response.content)
+        else:
+            # fallback to edge-tts
+            import edge_tts as _edge_tts
+            async def _save():
+                await _edge_tts.Communicate(text, voice=VOICE).save(filepath)
+            asyncio.run(_save())
+
         if not os.path.exists(filepath) or os.path.getsize(filepath) < 500:
             print(f"[Reachy would say]: {text}")
             return
@@ -409,8 +426,8 @@ def chat(mini, current_session: dict, past_context: list,
     stop_idle()
     is_question = user_message.strip().endswith("?")
     do_thinking_pose(mini, is_question)
-    phrases = THINKING_PHRASES_QUESTION if is_question else THINKING_PHRASES_STATEMENT
-    speak(random.choice(phrases))
+    # phrases = THINKING_PHRASES_QUESTION if is_question else THINKING_PHRASES_STATEMENT
+    # speak(random.choice(phrases))
     try:
         raw = llm_call(system_prompt, messages)
     except RuntimeError as e:
@@ -554,7 +571,15 @@ def main():
                                 import msvcrt
                                 if msvcrt.kbhit():
                                     key = msvcrt.getwch()
-                                    if key == '\r' or key == '\n':
+                                    if key == 'p' or key == 'P':
+                                        if vad_listener:
+                                            if vad_listener._paused.is_set():
+                                                vad_listener.resume()
+                                                print("\n[VAD resumed]")
+                                            else:
+                                                vad_listener.pause()
+                                                print("\n[VAD paused — press P to resume]")
+                                    elif key == '\r' or key == '\n':
                                         # Manual Enter-to-speak fallback
                                         if vad_listener:
                                             vad_listener.pause()
